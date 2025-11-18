@@ -44,6 +44,7 @@ add_llvm_target(BPFCodeGen
   BPFMIChecking.cpp
   BPFMISimplifyPatchable.cpp
   BTFDebug.cpp
+  BPFConstProp.cpp
 
   LINK_COMPONENTS
   Analysis

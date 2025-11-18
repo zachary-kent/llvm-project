@@ -58,6 +58,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   initializeBPFDAGToDAGISelLegacyPass(PR);
   initializeBPFMISimplifyPatchablePass(PR);
   initializeBPFMIPreEmitCheckingPass(PR);
+  initializeBPFMachineInstrPrinterPass(PR);
 }
 
 static Reloc::Model getEffectiveRelocModel(std::optional<Reloc::Model> RM) {
@@ -102,6 +103,7 @@ public:
   bool addInstSelector() override;
   void addMachineSSAOptimization() override;
   void addPreEmitPass() override;
+  void addPreRegAlloc() override;
 
   bool addIRTranslator() override;
   bool addLegalizeMachineIR() override;
@@ -154,6 +156,10 @@ void BPFPassConfig::addIRPasses() {
   addPass(createBPFCheckAndAdjustIR());
 
   TargetPassConfig::addIRPasses();
+}
+
+void BPFPassConfig::addPreRegAlloc() {
+  addPass(createBPFMachineInstrPrinterPass());
 }
 
 TargetTransformInfo
