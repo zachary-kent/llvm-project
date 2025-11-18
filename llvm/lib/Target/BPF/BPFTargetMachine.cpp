@@ -103,7 +103,7 @@ public:
   bool addInstSelector() override;
   void addMachineSSAOptimization() override;
   void addPreEmitPass() override;
-  void addPreRegAlloc() override;
+  void addPostRegAlloc() override;
 
   bool addIRTranslator() override;
   bool addLegalizeMachineIR() override;
@@ -158,7 +158,7 @@ void BPFPassConfig::addIRPasses() {
   TargetPassConfig::addIRPasses();
 }
 
-void BPFPassConfig::addPreRegAlloc() {
+void BPFPassConfig::addPostRegAlloc() {
   addPass(createBPFMachineInstrPrinterPass());
 }
 
