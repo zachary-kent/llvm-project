@@ -11,26 +11,26 @@
 
 using namespace llvm;
 
-#define BPF_MACHINEINSTR_PRINTER_PASS_NAME "Dummy BPF machineinstr printer pass"
+#define BPF_CONST_PROP_PASS_NAME "BPF Constant Propagation"
 
 namespace {
 
-class BPFMachineInstrPrinter : public MachineFunctionPass {
+class BPFConstProp : public MachineFunctionPass {
 public:
   static char ID;
 
-  BPFMachineInstrPrinter() : MachineFunctionPass(ID) {
-    initializeBPFMachineInstrPrinterPass(*PassRegistry::getPassRegistry());
+  BPFConstProp() : MachineFunctionPass(ID) {
+    initializeBPFConstPropPass(*PassRegistry::getPassRegistry());
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override;
 
   StringRef getPassName() const override {
-    return BPF_MACHINEINSTR_PRINTER_PASS_NAME;
+    return BPF_CONST_PROP_PASS_NAME;
   }
 };
 
-char BPFMachineInstrPrinter::ID = 0;
+char BPFConstProp::ID = 0;
 
 struct LatticeElement {
 
@@ -106,7 +106,7 @@ constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
   BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, BPF::R7, BPF::R8, BPF::R9, BPF::R10
 };
 
-bool BPFMachineInstrPrinter::runOnMachineFunction(MachineFunction &MF) {
+bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 
   const auto *TRI = MF.getSubtarget().getRegisterInfo();
 
@@ -164,16 +164,16 @@ bool BPFMachineInstrPrinter::runOnMachineFunction(MachineFunction &MF) {
 
 } // end of anonymous namespace
 
-INITIALIZE_PASS(BPFMachineInstrPrinter, "BPF-machineinstr-printer",
-                BPF_MACHINEINSTR_PRINTER_PASS_NAME,
+INITIALIZE_PASS(BPFConstProp, "bpf-const-prop",
+                BPF_CONST_PROP_PASS_NAME,
                 true, // is CFG only?
                 true  // is analysis?
 )
 
 namespace llvm {
 
-FunctionPass *createBPFMachineInstrPrinterPass() {
-  return new BPFMachineInstrPrinter();
+FunctionPass *createBPFConstPropPass() {
+  return new BPFConstProp();
 }
 
 } // namespace llvm
