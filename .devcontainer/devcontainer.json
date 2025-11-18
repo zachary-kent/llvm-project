@@ -1,0 +1,36 @@
+{
+  "name": "LLVM Development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "ms-python.python"
+      ],
+      "settings": {
+        "clangd.path": "/workspace/build/bin/clangd",
+        "clangd.arguments": [
+          "--compile-commands-dir=/workspace/build",
+          "--background-index",
+          "--clang-tidy"
+        ],
+        "cmake.buildDirectory": "${workspaceFolder}/build",
+        "cmake.configureSettings": {
+          "LLVM_TARGETS_TO_BUILD": "BPF;X86",
+          "CMAKE_BUILD_TYPE": "Debug",
+          "LLVM_ENABLE_PROJECTS": "clang;clang-tools-extra",
+          "LLVM_ENABLE_ASSERTIONS": "ON"
+        }
+      }
+    }
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "remoteUser": "vscode",
+  "postCreateCommand": "git config --global --add safe.directory /workspace"
+}
