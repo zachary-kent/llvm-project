@@ -126,7 +126,13 @@ const DenseMap<unsigned, unsigned> RR2RI {
   { BPF::SRA_rr, BPF::SRA_ri }
 };
 
+const DenseMap<unsigned, unsigned> SR2SI {
+  { BPF::STW, BPF::STW_imm },
+  { BPF::STD, BPF::STD_imm }
+};
+
 bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
+  outs() << "Hello from const prop\n";
 
   const auto &TSI = MF.getSubtarget();
   const auto *TRI = TSI.getRegisterInfo();
@@ -185,25 +191,40 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
   bool changed = false;
   for (auto &MBB : MF) {
     for (auto &MI : MBB) {
-      auto itr = RR2RI.find(MI.getOpcode());
+      unsigned Opcode = MI.getOpcode();
       // Skip non-RR instructions
-      if (itr == RR2RI.end()) continue;
-      assert(MI.getNumOperands() == 3);
-      auto RIOpcode = itr->second;
-      auto Src = MI.getOperand(2);
-      assert(Src.isReg() && Src.isUse());
-      auto SrcReg = Src.getReg();
-      auto Value = ConstIn[&MI][TRI->getEncodingValue(SrcReg)];
-      // Don't replace if NAC
-      if (!Value.isConstant()) continue;
-      auto Dst = MI.getOperand(0);
-      assert(Dst.isReg() && Dst.isDef());
-      auto DstReg = Dst.getReg();
-      BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(RIOpcode), DstReg)
-        .addReg(MI.getOperand(1).getReg())
-        .addImm(Value.value);
-      MI.eraseFromParent();
-      changed = true;
+      if (RR2RI.contains(Opcode)) {
+        assert(MI.getNumOperands() == 3);
+        auto RIOpcode = RR2RI.lookup(Opcode);
+        auto Src = MI.getOperand(2);
+        assert(Src.isReg() && Src.isUse());
+        auto SrcReg = Src.getReg();
+        auto Value = ConstIn[&MI][TRI->getEncodingValue(SrcReg)];
+        // Don't replace if NAC
+        if (!Value.isConstant()) continue;
+        auto Dst = MI.getOperand(0);
+        assert(Dst.isReg() && Dst.isDef());
+        auto DstReg = Dst.getReg();
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(RIOpcode), DstReg)
+          .addReg(MI.getOperand(1).getReg())
+          .addImm(Value.value);
+        MI.eraseFromParent();
+        changed = true;
+      } else if (SR2SI.contains(Opcode)) {
+        auto SIOpcode = SR2SI.lookup(Opcode);
+        auto Src = MI.getOperand(0);
+        auto Base = MI.getOperand(1);
+        auto Off = MI.getOperand(2);
+        assert(Src.isReg() && Src.isUse());
+        auto SrcReg = Src.getReg();
+        auto Value = ConstIn[&MI][TRI->getEncodingValue(SrcReg)];
+        // Don't replace if NAC
+        if (!Value.isConstant()) continue;
+        BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(SIOpcode))
+          .addImm(Value.value)
+          .add(Base)
+          .add(Off);
+      }
     }
   }
 
