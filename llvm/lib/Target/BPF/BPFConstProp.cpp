@@ -225,6 +225,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
           .add(Base)
           .add(Off);
       }
+      changed = true;
     }
   }
 
