@@ -51,6 +51,21 @@ struct LatticeElement {
     return !(*this == Other);
   }
 
+  friend raw_ostream &operator<<(raw_ostream &OS, const LatticeElement& Elt) {
+    switch (Elt.height) {
+      case LatticeElement::Height::NAC:
+        OS << "NAC";
+        break;
+      case LatticeElement::Height::CONST:
+        OS << "Constant " << Elt.value;
+        break;
+      case LatticeElement::Height::UNDEF:
+        OS << "UNDEF";
+        break;
+    }
+    return OS;
+  }
+
   bool isConstant() {
     return height == Height::CONST;
   }
@@ -211,7 +226,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
         MI.eraseFromParent();
         changed = true;
       } else if (SR2SI.contains(Opcode)) {
-        outs() << "Found store from reg\n";
+        outs() << "Found store from reg at " << MI << '\n';
         auto SIOpcode = SR2SI.lookup(Opcode);
         auto Src = MI.getOperand(0);
         auto Base = MI.getOperand(1);
@@ -219,9 +234,9 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
         assert(Src.isReg() && Src.isUse());
         auto SrcReg = Src.getReg();
         auto Value = ConstIn[&MI][TRI->getEncodingValue(SrcReg)];
+        outs() << "Has value " << Value << '\n';
         // Don't replace if NAC
         if (!Value.isConstant()) continue;
-        outs() << "Found constant " << Value.value << '\n';
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(SIOpcode))
           .addImm(Value.value)
           .add(Base)
