@@ -5,7 +5,6 @@
 #include "llvm/MC/MCRegister.h"
 #include "llvm/Pass.h"
 #include "Dataflow.h"
-// #include "llvm/Target/TargetRegisterInfo.h"
 
 #include <array>
 
@@ -102,19 +101,37 @@ private:
 // const LatticeElement LatticeElement::UNDEF{Height::UNDEF, 0};
 // const LatticeElement LatticeElement::NAC{Height::NAC, 0};
 
-constexpr size_t NUM_BPF_REGS = 11;
+constexpr size_t NUM_BPF_REGS = 12;
 
 using ConstMap = std::array<LatticeElement, NUM_BPF_REGS>;
 
 constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
-  BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, BPF::R7, BPF::R8, BPF::R9, BPF::R10
+  BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, 
+  BPF::R6, BPF::R7, BPF::R8, BPF::R9, BPF::R10, BPF::R11
+};
+
+// Associates Register-Register instructions with corresponding
+// Register-Immediate ones
+const DenseMap<unsigned, unsigned> RR2RI {
+  { BPF::ADD_rr, BPF::ADD_ri },
+  { BPF::SUB_rr, BPF::SUB_ri },
+  { BPF::MUL_rr, BPF::MUL_ri },
+  { BPF::DIV_rr, BPF::DIV_ri },
+  { BPF::MOD_rr, BPF::MOD_ri },
+  { BPF::OR_rr,  BPF::OR_ri  },
+  { BPF::AND_rr, BPF::AND_ri },
+  { BPF::XOR_rr, BPF::XOR_ri },
+  { BPF::SLL_rr, BPF::SLL_ri },
+  { BPF::SRL_rr, BPF::SRL_ri },
+  { BPF::SRA_rr, BPF::SRA_ri }
 };
 
 bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 
-  const auto *TRI = MF.getSubtarget().getRegisterInfo();
+  const auto &TSI = MF.getSubtarget();
+  const auto *TRI = TSI.getRegisterInfo();
 
-  const SmallVector<MCRegister> InitializedOnEntry{BPF::R1, BPF::R10};
+  const SmallVector<MCRegister> InitializedOnEntry{BPF::R1, BPF::R10, BPF::R11};
 
   // Which registers are defined on entry to the program
   ConstMap boundary;
@@ -163,19 +180,30 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 
   compute(Params, MF);
 
+  const auto *TII = TSI.getInstrInfo();
 
   bool changed = false;
   for (auto &MBB : MF) {
     for (auto &MI : MBB) {
-      for (auto &MO : MI.operands()) {
-        // Don't replace non-registers, non-uses, and defs
-        if (!MO.isReg() || !MO.isUse() || MO.isDef()) continue;
-        auto Value = ConstIn[&MI][TRI->getEncodingValue(MO.getReg())];
-        // Don't replace if NAC
-        if (!Value.isConstant()) continue;
-        changed = true;
-        MO.ChangeToImmediate(Value.value);
-      }
+      auto itr = RR2RI.find(MI.getOpcode());
+      // Skip non-RR instructions
+      if (itr == RR2RI.end()) continue;
+      assert(MI.getNumOperands() == 3);
+      auto RIOpcode = itr->second;
+      auto Src = MI.getOperand(2);
+      assert(Src.isReg() && Src.isUse());
+      auto SrcReg = Src.getReg();
+      auto Value = ConstIn[&MI][TRI->getEncodingValue(SrcReg)];
+      // Don't replace if NAC
+      if (!Value.isConstant()) continue;
+      auto Dst = MI.getOperand(0);
+      assert(Dst.isReg() && Dst.isDef());
+      auto DstReg = Dst.getReg();
+      BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(RIOpcode), DstReg)
+        .addReg(MI.getOperand(1).getReg())
+        .addImm(Value.value);
+      MI.eraseFromParent();
+      changed = true;
     }
   }
 
@@ -187,7 +215,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 INITIALIZE_PASS(BPFConstProp, "bpf-const-prop",
                 BPF_CONST_PROP_PASS_NAME,
                 true, // is CFG only?
-                true  // is analysis?
+                false  // is analysis?
 )
 
 namespace llvm {
