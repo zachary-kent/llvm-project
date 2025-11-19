@@ -56,29 +56,6 @@ bool BPFDCE::runOnMachineFunction(MachineFunction &MF) {
     },
     .transfer = [&](MachineBasicBlock &MBB, BitVector &In) {
 
-      
-
-      
-      for (auto &MI : MBB) {
-        ConstIn[&MI] = In;
-        for (const auto &Def : MI.defs()) {
-          In[TRI->getEncodingValue(Def.getReg())].height = LatticeElement::Height::NAC;
-        }
-        if (MI.isMoveImmediate()) {
-          auto Dst = MI.getOperand(0).getReg();
-          auto Imm = MI.getOperand(1).getImm();
-          In[TRI->getEncodingValue(Dst)] = Imm;
-        }
-        for (const auto &Op : MI.operands()) {
-          if (Op.isRegMask()) {
-            for (size_t i = 0; i < NUM_BPF_REGS; i++) {
-              if (Op.clobbersPhysReg(BPF_REGS[i])) {
-                In[i].height = LatticeElement::Height::NAC;
-              }
-            }
-          }
-        } 
-      }
     }
   };
 
