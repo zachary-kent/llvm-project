@@ -205,9 +205,12 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 
   const auto *TII = TSI.getInstrInfo();
 
+  DenseSet<MachineInstr*> delete_worklist;
+
   bool changed = false;
   for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
+    for (auto I = MBB.begin(); I != MBB.end(); ++I) {
+      auto &MI = *I;
       unsigned Opcode = MI.getOpcode();
 
       outs() << "OPCODE: " << Opcode << "\n";
@@ -227,7 +230,8 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
         BuildMI(MBB, MI, MI.getDebugLoc(), TII->get(RIOpcode), DstReg)
           .addReg(MI.getOperand(1).getReg())
           .addImm(Value.value);
-        MI.eraseFromParent();
+        // MI.eraseFromParent();
+        delete_worklist.insert(&MI);
         changed = true;
       } else if (SR2SI.contains(Opcode)) {
         outs() << "Found store from reg at " << MI << '\n';
@@ -245,9 +249,14 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
           .addImm(Value.value)
           .add(Base)
           .add(Off);
+        delete_worklist.insert(&MI);
+        changed = true;
       }
-      changed = true;
     }
+  }
+
+  for(auto MI : delete_worklist) {
+    MI->eraseFromParent();
   }
 
   return changed;

@@ -13,12 +13,19 @@ struct bpf_map_def {
       unsigned int map_flags;
 };
 
-struct bpf_map_def SEC("maps") map = {
-  .type = BPF_MAP_TYPE_HASH,
-  .key_size = 6,
-  .value_size = sizeof(__u32),
-  .max_entries = 256,
-};
+// struct bpf_map_def SEC("maps") map = {
+//   .type = BPF_MAP_TYPE_HASH,
+//   .key_size = 6,
+//   .value_size = sizeof(__u32),
+//   .max_entries = 256,
+// };
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, 256);
+	__type(key, int);
+	__type(value, int);
+} map SEC(".maps");
 
 SEC("xdp")
 int toy_example(struct xdp_md *ctx)
@@ -39,10 +46,11 @@ int toy_example(struct xdp_md *ctx)
     if (proto == BE_ETH_P_IP) {
         __builtin_memcpy(key, eth->h_source, 6);
         lookup_res = bpf_map_lookup_elem(&map, &key);
+
         if (lookup_res) {
-    return XDP_PASS;
+            return XDP_PASS;
         } else {
-        return XDP_DROP;
+            return XDP_DROP;
         }
     } else if (proto == BE_ETH_P_IPV6) {
         return XDP_DROP;
