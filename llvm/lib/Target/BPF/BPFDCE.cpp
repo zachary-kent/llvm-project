@@ -32,6 +32,8 @@ public:
   }
 };
 
+char BPFDCE::ID = 0;
+
 constexpr size_t NUM_BPF_REGS = 11;
 
 constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
