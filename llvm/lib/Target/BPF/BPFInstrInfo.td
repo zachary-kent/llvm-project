@@ -411,21 +411,25 @@ def MOV_rr : ALU_RR<BPF_ALU64, BPF_MOV, 0,
                     (ins GPR:$src),
                     "$dst = $src",
                     []>;
+let isMoveImm = 1 in {
 def MOV_ri : ALU_RI<BPF_ALU64, BPF_MOV, 0,
                     (outs GPR:$dst),
                     (ins i64imm:$imm),
                     "$dst = $imm",
                     [(set GPR:$dst, (i64 i64immSExt32:$imm))]>;
+}
 def MOV_rr_32 : ALU_RR<BPF_ALU, BPF_MOV, 0,
                     (outs GPR32:$dst),
                     (ins GPR32:$src),
                     "$dst = $src",
                     []>;
+let isMoveImm = 1 in {
 def MOV_ri_32 : ALU_RI<BPF_ALU, BPF_MOV, 0,
                     (outs GPR32:$dst),
                     (ins i32imm:$imm),
                     "$dst = $imm",
                     [(set GPR32:$dst, (i32 i32immSExt32:$imm))]>;
+} 
 
 let Predicates = [BPFHasMovsx] in {
   def MOVSX_rr_8 : ALU_RR<BPF_ALU64, BPF_MOV, 8,

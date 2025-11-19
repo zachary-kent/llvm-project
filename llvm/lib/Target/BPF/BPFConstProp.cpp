@@ -143,7 +143,8 @@ const DenseMap<unsigned, unsigned> RR2RI {
 
 const DenseMap<unsigned, unsigned> SR2SI {
   { BPF::STW, BPF::STW_imm },
-  { BPF::STD, BPF::STD_imm }
+  { BPF::STD, BPF::STD_imm },
+  { BPF::STW32, BPF::STW_imm }
 };
 
 bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
@@ -182,6 +183,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
           In[TRI->getEncodingValue(Def.getReg())].height = LatticeElement::Height::NAC;
         }
         if (MI.isMoveImmediate()) {
+          outs() << "MOV SEEN" << MI.getOpcode() << "\n";
           auto Dst = MI.getOperand(0).getReg();
           auto Imm = MI.getOperand(1).getImm();
           In[TRI->getEncodingValue(Dst)] = Imm;
@@ -207,6 +209,8 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
   for (auto &MBB : MF) {
     for (auto &MI : MBB) {
       unsigned Opcode = MI.getOpcode();
+
+      outs() << "OPCODE: " << Opcode << "\n";
       // Skip non-RR instructions
       if (RR2RI.contains(Opcode)) {
         assert(MI.getNumOperands() == 3);
