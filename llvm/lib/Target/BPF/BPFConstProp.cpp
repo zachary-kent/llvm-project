@@ -52,6 +52,10 @@ struct LatticeElement {
     return !(*this == Other);
   }
 
+  bool isConstant() {
+    return height == Height::CONST;
+  }
+
   LatticeElement() : height(Height::UNDEF), value(0) {}
   LatticeElement(int64_t value) : height(Height::CONST), value(value) {}
 
@@ -144,10 +148,10 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
           auto Imm = MI.getOperand(1).getImm();
           In[TRI->getEncodingValue(Dst)] = Imm;
         }
-        for (const auto &Op : MI.operands()) {
-          if (Op.isRegMask()) {
+        for (const auto &MO : MI.operands()) {
+          if (MO.isRegMask()) {
             for (size_t i = 0; i < NUM_BPF_REGS; i++) {
-              if (Op.clobbersPhysReg(BPF_REGS[i])) {
+              if (MO.clobbersPhysReg(BPF_REGS[i])) {
                 In[i].height = LatticeElement::Height::NAC;
               }
             }
@@ -159,7 +163,23 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 
   compute(Params, MF);
 
-  return false;
+
+  bool changed = false;
+  for (auto &MBB : MF) {
+    for (auto &MI : MBB) {
+      for (auto &MO : MI.operands()) {
+        // Don't replace non-registers, non-uses, and defs
+        if (!MO.isReg() || !MO.isUse() || MO.isDef()) continue;
+        auto Value = ConstIn[&MI][TRI->getEncodingValue(MO.getReg())];
+        // Don't replace if NAC
+        if (!Value.isConstant()) continue;
+        changed = true;
+        MO.ChangeToImmediate(Value.value);
+      }
+    }
+  }
+
+  return changed;
 }
 
 } // end of anonymous namespace
