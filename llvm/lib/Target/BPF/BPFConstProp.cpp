@@ -33,18 +33,18 @@ char BPFConstProp::ID = 0;
 
 struct LatticeElement {
 
-  enum class Height {
+  enum class Level {
     UNDEF,
     CONST,
     NAC
   };
 
-  Height height;
+  Level level;
   int64_t value;
 
   bool operator==(const LatticeElement &Other) const {
-    return height == Other.height && 
-      (height != Height::CONST || value == Other.value);
+    return level == Other.level && 
+      (level != Level::CONST || value == Other.value);
   }
 
   bool operator!=(const LatticeElement &Other) const {
@@ -52,14 +52,14 @@ struct LatticeElement {
   }
 
   friend raw_ostream &operator<<(raw_ostream &OS, const LatticeElement& Elt) {
-    switch (Elt.height) {
-      case LatticeElement::Height::NAC:
+    switch (Elt.level) {
+      case LatticeElement::Level::NAC:
         OS << "NAC";
         break;
-      case LatticeElement::Height::CONST:
+      case LatticeElement::Level::CONST:
         OS << "Constant " << Elt.value;
         break;
-      case LatticeElement::Height::UNDEF:
+      case LatticeElement::Level::UNDEF:
         OS << "UNDEF";
         break;
     }
@@ -67,40 +67,40 @@ struct LatticeElement {
   }
 
   bool isConstant() {
-    return height == Height::CONST;
+    return level == Level::CONST;
   }
 
-  LatticeElement() : height(Height::UNDEF), value(0) {}
-  LatticeElement(int64_t value) : height(Height::CONST), value(value) {}
+  LatticeElement() : level(Level::UNDEF), value(0) {}
+  LatticeElement(int64_t value) : level(Level::CONST), value(value) {}
 
   // static const LatticeElement UNDEF;
   // static const LatticeElement NAC;
 
   // Mutates this lattice element to its greater lower bound with some other
   void meet(const LatticeElement &Other) {
-    switch (height) {
-      case Height::UNDEF: {
+    switch (level) {
+      case Level::UNDEF: {
         // If this is undef, simply set to other
         *this = Other;
         break;
       }
-      case Height::NAC: {
+      case Level::NAC: {
         // do nothing, remain NAC
         break;
       }
-      case Height::CONST: {
-        switch (Other.height) {
-          case Height::UNDEF: {
+      case Level::CONST: {
+        switch (Other.level) {
+          case Level::UNDEF: {
             // do nothing, remain same constant
             break;
           }
-          case Height::NAC: {
-            height = Height::NAC;
+          case Level::NAC: {
+            level = Level::NAC;
             break;
           }
-          case Height::CONST: {
+          case Level::CONST: {
             if (value != Other.value) {
-              height = Height::NAC;
+              level = Level::NAC;
             }
             break;
           }
@@ -110,11 +110,11 @@ struct LatticeElement {
     }
   }
 private:
-  LatticeElement(Height height, int64_t value) : height(height), value(value) {}
+  LatticeElement(Level level, int64_t value) : level(level), value(value) {}
 };
 
-// const LatticeElement LatticeElement::UNDEF{Height::UNDEF, 0};
-// const LatticeElement LatticeElement::NAC{Height::NAC, 0};
+// const LatticeElement LatticeElement::UNDEF{Level::UNDEF, 0};
+// const LatticeElement LatticeElement::NAC{Level::NAC, 0};
 
 constexpr size_t NUM_BPF_REGS = 12;
 
@@ -160,7 +160,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 
   // Every register initialized on entry is NAC
   for (auto MCR : InitializedOnEntry) {
-    boundary[TRI->getEncodingValue(MCR)].height = LatticeElement::Height::NAC;
+    boundary[TRI->getEncodingValue(MCR)].level = LatticeElement::Level::NAC;
   }
 
   // Dataflow values at entry of every instruction
@@ -180,7 +180,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
       for (auto &MI : MBB) {
         ConstIn[&MI] = In;
         for (const auto &Def : MI.defs()) {
-          In[TRI->getEncodingValue(Def.getReg())].height = LatticeElement::Height::NAC;
+          In[TRI->getEncodingValue(Def.getReg())].level = LatticeElement::Level::NAC;
         }
         if (MI.isMoveImmediate()) {
           outs() << "MOV SEEN" << MI.getOpcode() << "\n";
@@ -192,7 +192,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
           if (MO.isRegMask()) {
             for (size_t i = 0; i < NUM_BPF_REGS; i++) {
               if (MO.clobbersPhysReg(BPF_REGS[i])) {
-                In[i].height = LatticeElement::Height::NAC;
+                In[i].level = LatticeElement::Level::NAC;
               }
             }
           }
