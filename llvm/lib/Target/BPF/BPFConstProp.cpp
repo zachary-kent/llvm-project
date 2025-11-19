@@ -147,13 +147,13 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
   Parameters<ConstMap, MachineBasicBlock> Params = {
     .direction = Direction::Forward,
     .top = ConstMap(),
+    .boundary = std::move(boundary),
     .meet = [](ConstMap& A, const ConstMap &B) {
       // Pointwise meet
       for (size_t i = 0; i < NUM_BPF_REGS; i++) {
         A[i].meet(B[i]);
       }
     },
-    .boundary = std::move(boundary),
     .transfer = [&](MachineBasicBlock &MBB, ConstMap &In) {
       for (auto &MI : MBB) {
         ConstIn[&MI] = In;

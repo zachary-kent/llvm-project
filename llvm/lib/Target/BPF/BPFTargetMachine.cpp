@@ -59,6 +59,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   initializeBPFMISimplifyPatchablePass(PR);
   initializeBPFMIPreEmitCheckingPass(PR);
   initializeBPFConstPropPass(PR);
+  initializeBPFDCEPass(PR);
 }
 
 static Reloc::Model getEffectiveRelocModel(std::optional<Reloc::Model> RM) {
@@ -160,6 +161,7 @@ void BPFPassConfig::addIRPasses() {
 
 void BPFPassConfig::addPostRegAlloc() {
   addPass(createBPFConstPropPass());
+  addPass(createBPFDCEPass());
 }
 
 TargetTransformInfo
