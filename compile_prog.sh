@@ -5,8 +5,9 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 pushd $SCRIPT_DIR/build/bin
 
 # ./clang -O3 -target bpf -c ../../prog.c -o prog.ll -emit-llvm
-./clang -O3 -g -target bpf -c ../../prog.c -o prog.o
-./clang -O3 -g -target bpf -c ../../drop.c -o drop.o
+./clang -O3 -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce -g -target bpf -c ../../prog.c -o prog.o
+./clang -O3 -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce -g -target bpf -c ../../drop.c -o drop.o
+./clang -O3 -g -target bpf -c ../../drop.c -o drop_unopt.o
 # ./llc -march=bpf -filetype=obj proc.ll -o proc.o
 
 popd
