@@ -5,6 +5,7 @@
 # ///
 import os
 import subprocess
+import argparse
 from scapy.all import Ether, IP, UDP, Raw
 
 src_mac = "00:11:22:33:44:55"
@@ -69,10 +70,21 @@ def load_prog(prog_path, pin_path):
 
 PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 # PIN_PATH = "/home/otso/llvm-project/xdp_bench_prog"
-PROG_PATH = "build/bin/prog.o"
+# PROG_PATH = "build/bin/prog.o"
+
+parser = argparse.ArgumentParser(
+    description="CLI"
+)
+
+parser.add_argument("-i", dest="input",required=True)
+
+args = parser.parse_args()
+
+PROG_PATH = args.input
 
 os.makedirs(os.path.dirname(PIN_PATH), exist_ok=True)
 load_prog(PROG_PATH, PIN_PATH)
+
 
 PACKET_FILE_NAME = "packet.bin"
 data = mk_packet(100)
