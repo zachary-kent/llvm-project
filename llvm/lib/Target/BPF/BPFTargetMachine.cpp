@@ -44,6 +44,16 @@ static cl::opt<bool>
     DisableCheckUnreachable("bpf-disable-trap-unreachable", cl::Hidden,
                             cl::desc("Disable Trap Unreachable for BPF"));
 
+static cl::opt<bool>
+    EnableInstrumentation("bpf-enable-instrumentation", cl::Hidden,
+                          cl::desc("Enable dynamic instruction count instrumentation"));
+
+static cl::opt<bool>
+    EnableConstProp("bpf-enable-const-prop", cl::desc("Enable Constant Propagation on BPF bytecode"));
+
+static cl::opt<bool>
+    EnableDCE("bpf-enable-dce", cl::desc("Enable Dead Code Elimination on BPF bytecode"));
+
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   // Register the target.
   RegisterTargetMachine<BPFTargetMachine> X(getTheBPFleTarget());
@@ -135,7 +145,8 @@ void BPFTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
         FPM.addPass(BPFPreserveDITypePass());
         FPM.addPass(BPFIRPeepholePass());
         MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
-        MPM.addPass(AddVolatileGlobal());
+        if (EnableInstrumentation)
+          MPM.addPass(AddVolatileGlobal());
       });
   PB.registerPeepholeEPCallback([=](FunctionPassManager &FPM,
                                     OptimizationLevel Level) {
@@ -162,8 +173,10 @@ void BPFPassConfig::addIRPasses() {
 }
 
 void BPFPassConfig::addPostRegAlloc() {
-  addPass(createBPFConstPropPass());
-  addPass(createBPFDCEPass());
+  if (EnableConstProp)
+    addPass(createBPFConstPropPass());
+  if (EnableDCE)
+    addPass(createBPFDCEPass());
 }
 
 TargetTransformInfo
