@@ -8,7 +8,7 @@ TARGET_DIR="$1"
 
 cat << EOF > $SCRIPT_DIR/clang_opt
 #!/bin/sh
-$TARGET_DIR -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce "\$@"
+$TARGET_DIR/clang -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce "\$@"
 EOF
 
 echo "Starting to compile and install LLVM into $TARGET_DIR"
