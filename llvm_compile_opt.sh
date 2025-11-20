@@ -5,6 +5,8 @@ pushd $SCRIPT_DIR/build
 
 # FIRST MAKE SURE TO COMMENT OUT OUR CUSTOM MACHINE PASSES
 
+TARGET_DIR="/home/otso/llvm_better"
+
 # Install our version
 # Location: /home/otso/llvm_better
 cmake -G Ninja \
@@ -14,7 +16,7 @@ cmake -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DLLVM_USE_LINKER=lld \
   -DLLVM_PARALLEL_LINK_JOBS=1 \
-  -DCMAKE_INSTALL_PREFIX=/home/otso/llvm_better \
+  -DCMAKE_INSTALL_PREFIX=$TARGET_DIR \
   -DLLVM_ENABLE_ASSERTIONS=ON \
   -DLLVM_ENABLE_PROJECTS="clang" \
   -DLLVM_TARGETS_TO_BUILD="BPF;X86" \
