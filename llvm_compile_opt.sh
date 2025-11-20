@@ -1,12 +1,18 @@
 #!/bin/bash
 
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
 [ $# -eq 1 ] || { echo "need exactly one argument - path to install llvm into "; exit 1; }
 
 TARGET_DIR="$1"
 
+cat << EOF > $SCRIPT_DIR/clang_opt
+#!/bin/sh
+$TARGET_DIR -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce "\$@"
+EOF
+
 echo "Starting to compile and install LLVM into $TARGET_DIR"
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 pushd $SCRIPT_DIR/build
 
