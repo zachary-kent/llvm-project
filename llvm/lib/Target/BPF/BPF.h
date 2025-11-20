@@ -33,6 +33,8 @@ FunctionPass *createBPFMIPreEmitPeepholePass();
 FunctionPass *createBPFMIPreEmitCheckingPass();
 FunctionPass *createBPFConstPropPass();
 FunctionPass *createBPFDCEPass();
+FunctionPass *createBPFInstrumentInitialPass();
+FunctionPass *createBPFInstrumentFinalPass();
 
 InstructionSelector *createBPFInstructionSelector(const BPFTargetMachine &,
                                                   const BPFSubtarget &,
@@ -47,6 +49,8 @@ void initializeBPFMIPreEmitPeepholePass(PassRegistry &);
 void initializeBPFMISimplifyPatchablePass(PassRegistry &);
 void initializeBPFConstPropPass(PassRegistry &);
 void initializeBPFDCEPass(PassRegistry &);
+void initializeBPFInstrumentInitialPass(PassRegistry &);
+void initializeBPFInstrumentFinalPass(PassRegistry &);
 
 class BPFAbstractMemberAccessPass
     : public PassInfoMixin<BPFAbstractMemberAccessPass> {

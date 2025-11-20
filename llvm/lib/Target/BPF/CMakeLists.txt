@@ -46,6 +46,7 @@ add_llvm_target(BPFCodeGen
   BTFDebug.cpp
   BPFConstProp.cpp
   BPFDCE.cpp
+  BPFInstrument.cpp
 
   LINK_COMPONENTS
   Analysis

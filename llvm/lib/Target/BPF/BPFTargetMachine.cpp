@@ -71,6 +71,8 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   initializeBPFMIPreEmitCheckingPass(PR);
   initializeBPFConstPropPass(PR);
   initializeBPFDCEPass(PR);
+  initializeBPFInstrumentInitialPass(PR);
+  initializeBPFInstrumentFinalPass(PR);
 }
 
 static Reloc::Model getEffectiveRelocModel(std::optional<Reloc::Model> RM) {
@@ -115,6 +117,7 @@ public:
   bool addInstSelector() override;
   void addMachineSSAOptimization() override;
   void addPreEmitPass() override;
+  void addPreRegAlloc() override;
   void addPostRegAlloc() override;
 
   bool addIRTranslator() override;
@@ -172,6 +175,11 @@ void BPFPassConfig::addIRPasses() {
   TargetPassConfig::addIRPasses();
 }
 
+void BPFPassConfig::addPreRegAlloc() {
+  if (EnableInstrumentation)
+    addPass(createBPFInstrumentInitialPass());
+}
+
 void BPFPassConfig::addPostRegAlloc() {
   if (EnableConstProp)
     addPass(createBPFConstPropPass());
@@ -211,6 +219,7 @@ void BPFPassConfig::addPreEmitPass() {
   if (getOptLevel() != CodeGenOptLevel::None)
     if (!DisableMIPeephole)
       addPass(createBPFMIPreEmitPeepholePass());
+  addPass(createBPFInstrumentFinalPass());
 }
 
 bool BPFPassConfig::addIRTranslator() {

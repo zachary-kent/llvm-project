@@ -70,11 +70,6 @@ char BPFDCE::ID = 0;
 
 constexpr size_t NUM_BPF_REGS = 12;
 
-constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
-  BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, 
-  BPF::R6, BPF::R7, BPF::R8, BPF::R9, BPF::R10, BPF::R11
-};
-
 template<typename F>
 bool AnyOperand(const MachineInstr &MI, F &&f) {
   static_assert(std::is_invocable_r_v<bool, F, const MachineOperand&>);
