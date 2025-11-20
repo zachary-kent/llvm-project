@@ -19,16 +19,25 @@ exit 1
 
 - Saved to
 ## Suricata
+# https://docs.suricata.io/en/latest/capture-hardware/ebpf-xdp.html#setup-xdp-bypass
 cd /home/otso/suricata/
 
 ### Compile with certain clang
 ```
-CC=/home/otso/llvm_better/bin/clang ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
+# BE ROOT WHILE DOING THIS
+LLVM_ROOT=/home/otso/llvm_better ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
+--enable-ebpf --enable-ebpf-build
+
+LLC=/home/otso/llvm_better/bin/llc  CC=/home/otso/llvm_better/bin/clang ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
+--enable-ebpf --enable-ebpf-build
+
+CC=clang ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
 --enable-ebpf --enable-ebpf-build
 
 make clean && make
 ```
 
+# suricata filter
 /home/otso/suricata/ebpf/xdp_filter.bpf 
 
 ##
