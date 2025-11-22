@@ -49,12 +49,13 @@ bool BPFInstrumentInitial::runOnMachineFunction(MachineFunction &MF) {
 
   for (auto &MBB : MF) {
 
-    auto NumInstrs = MRI.createVirtualRegister(&BPF::GPRRegClass);
+    auto NumInstrs = MRI.createVirtualRegister(&BPF::GPR32RegClass);
     auto Addr = MRI.createVirtualRegister(&BPF::GPRRegClass);
+    auto Dummy = MRI.createVirtualRegister(&BPF::GPRRegClass);
 
-    // Add fetch-and-atch
+    // Add fetch-and-add
     BuildMI(MBB, MBB.begin(), DebugLoc(), TII->get(BPF::XADDD))
-      .addReg(NumInstrs, RegState::Define | RegState::Dead)
+      .addReg(Dummy, RegState::Define | RegState::Dead)
       .addReg(Addr, RegState::Kill)
       .addImm(0)
       .addReg(NumInstrs, RegState::Kill);

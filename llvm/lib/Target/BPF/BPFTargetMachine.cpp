@@ -219,7 +219,8 @@ void BPFPassConfig::addPreEmitPass() {
   if (getOptLevel() != CodeGenOptLevel::None)
     if (!DisableMIPeephole)
       addPass(createBPFMIPreEmitPeepholePass());
-  addPass(createBPFInstrumentFinalPass());
+  // if (EnableInstrumentation)
+    // addPass(createBPFInstrumentFinalPass());
 }
 
 bool BPFPassConfig::addIRTranslator() {

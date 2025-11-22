@@ -891,7 +891,7 @@ public:
   /// The first argument is the property being queried.
   /// The second argument indicates whether the query should look inside
   /// instruction bundles.
-  bool hasProperty(unsigned MCFlag, QueryType Type = AnyInBundle) const {
+  bool  hasProperty(unsigned MCFlag, QueryType Type = AnyInBundle) const {
     assert(MCFlag < 64 &&
            "MCFlag out of range for bit mask in getFlags/hasPropertyInBundle.");
     // Inline the fast path for unbundled or bundle-internal instructions.
