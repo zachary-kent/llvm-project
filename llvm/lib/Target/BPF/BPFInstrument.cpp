@@ -51,22 +51,21 @@ bool BPFInstrumentInitial::runOnMachineFunction(MachineFunction &MF) {
 
     auto NumInstrs = MRI.createVirtualRegister(&BPF::GPR32RegClass);
     auto Addr = MRI.createVirtualRegister(&BPF::GPRRegClass);
-    auto Dummy = MRI.createVirtualRegister(&BPF::GPRRegClass);
+    auto Dummy = MRI.createVirtualRegister(&BPF::GPR32RegClass);
 
     // Add fetch-and-add
-    BuildMI(MBB, MBB.begin(), DebugLoc(), TII->get(BPF::XADDD))
-      .addReg(Dummy, RegState::Define | RegState::Dead)
-      .addReg(Addr, RegState::Kill)
+    BuildMI(MBB, MBB.getFirstNonPHI(), DebugLoc(), TII->get(BPF::XADDW32), Dummy)
+      .addReg(Addr)
       .addImm(0)
-      .addReg(NumInstrs, RegState::Kill);
+      .addReg(NumInstrs);
 
     // Load address of instrumentation global
-    BuildMI(MBB, MBB.begin(), DebugLoc(), TII->get(BPF::LD_imm64), Addr)
+    BuildMI(MBB, MBB.getFirstNonPHI(), DebugLoc(), TII->get(BPF::LD_imm64), Addr)
       .addGlobalAddress(GV);
 
     // Load numbe of instructions in basic blocks
     MachineInstr *LoadNumInstrs =
-      BuildMI(MBB, MBB.begin(), DebugLoc(), TII->get(BPF::MOV_ri_32), NumInstrs)
+      BuildMI(MBB, MBB.getFirstNonPHI(), DebugLoc(), TII->get(BPF::MOV_ri_32), NumInstrs)
       .addImm(0);
 
     LoadImms[&MBB] = LoadNumInstrs;
@@ -107,7 +106,8 @@ bool BPFInstrumentFinal::runOnMachineFunction(MachineFunction &MF) {
     assert(LoadImms.contains(&MBB));
     auto *LoadImm = LoadImms[&MBB];
     // Patch up load to correspond to actual number of instructions in block
-    LoadImm->getOperand(1).setImm(NumInstrs);
+    auto &Imm = LoadImm->getOperand(1);
+    Imm.setImm(NumInstrs);
   }
 
   return true;
