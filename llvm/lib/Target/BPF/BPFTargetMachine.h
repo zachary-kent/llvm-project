@@ -18,6 +18,13 @@
 #include <optional>
 
 namespace llvm {
+
+struct BPFFunctionInfo : public MachineFunctionInfo {
+  // Immediate loads of the address of global used for instrumentation
+  DenseMap<MachineBasicBlock*, MachineInstr*> LoadImms;
+  BPFFunctionInfo(const Function &F, const BPFSubtarget *STI);
+};
+
 class BPFTargetMachine : public CodeGenTargetMachineImpl {
   std::unique_ptr<TargetLoweringObjectFile> TLOF;
   BPFSubtarget Subtarget;
@@ -41,6 +48,10 @@ public:
   TargetLoweringObjectFile *getObjFileLowering() const override {
     return TLOF.get();
   }
+
+  MachineFunctionInfo 
+  *createMachineFunctionInfo(BumpPtrAllocator &Allocator, const Function &F,
+                            const TargetSubtargetInfo *STI) const override;
 
   void registerPassBuilderCallbacks(PassBuilder &PB) override;
 };

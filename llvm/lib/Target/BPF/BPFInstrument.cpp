@@ -6,20 +6,13 @@
 #include "llvm/MC/MCRegister.h"
 #include "llvm/Pass.h"
 #include "Dataflow.h"
+#include "BPFTargetMachine.h"
 
 #include <array>
 
 using namespace llvm;
 
 namespace {
-
-struct InstrumentationInfo : public MachineFunctionInfo {
-  DenseMap<MachineBasicBlock*, MachineInstr*> LoadImms;
-
-  static InstrumentationInfo &get(MachineFunction &MF) {
-    return *MF.getInfo<InstrumentationInfo>();
-  }
-};
 
 #define BPF_INSTRUMENT_INITIAL_PASS_NAME "BPF Instrumentation"
 
@@ -47,7 +40,7 @@ bool BPFInstrumentInitial::runOnMachineFunction(MachineFunction &MF) {
   const auto *TII = TSI.getInstrInfo();
   auto &MRI = MF.getRegInfo();
 
-  auto &Info = InstrumentationInfo::get(MF);
+  auto &LoadImms = MF.getInfo<BPFFunctionInfo>()->LoadImms;
 
   auto *M = MF.getFunction().getParent();
 
@@ -75,7 +68,7 @@ bool BPFInstrumentInitial::runOnMachineFunction(MachineFunction &MF) {
       BuildMI(MBB, MBB.begin(), DebugLoc(), TII->get(BPF::MOV_ri_32), NumInstrs)
       .addImm(0);
 
-    Info.LoadImms[&MBB] = LoadNumInstrs;
+    LoadImms[&MBB] = LoadNumInstrs;
   }
 
   return true;
@@ -101,7 +94,7 @@ public:
 char BPFInstrumentFinal::ID = 0;
 
 bool BPFInstrumentFinal::runOnMachineFunction(MachineFunction &MF) {
-  auto &LoadImms = InstrumentationInfo::get(MF).LoadImms;
+  auto &LoadImms = MF.getInfo<BPFFunctionInfo>()->LoadImms;
 
   for (auto &MBB : MF) {
     unsigned NumInstrs = 0;

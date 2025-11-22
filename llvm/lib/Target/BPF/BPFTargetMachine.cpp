@@ -241,3 +241,13 @@ bool BPFPassConfig::addGlobalInstructionSelect() {
   addPass(new InstructionSelect(getOptLevel()));
   return false;
 }
+
+BPFFunctionInfo::BPFFunctionInfo(const Function &F, const BPFSubtarget *STI) {}
+
+MachineFunctionInfo *BPFTargetMachine::createMachineFunctionInfo(
+  BumpPtrAllocator &Allocator, 
+  const Function &F,
+  const TargetSubtargetInfo *STI) const {
+    return BPFFunctionInfo::create<BPFFunctionInfo>(
+      Allocator, F, static_cast<const BPFSubtarget *>(STI));
+  }
