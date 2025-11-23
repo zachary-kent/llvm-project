@@ -12,6 +12,8 @@ struct bpf_map_def SEC("maps") map = {
   .max_entries = 256,
 };
 
+volatile unsigned dyn_inst_cnt = 0;
+
 // struct {
 // 	__uint(type, BPF_MAP_TYPE_HASH);
 // 	__uint(max_entries, 256);

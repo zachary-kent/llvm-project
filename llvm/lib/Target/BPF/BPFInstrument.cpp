@@ -99,7 +99,7 @@ bool BPFInstrumentFinal::runOnMachineFunction(MachineFunction &MF) {
   for (auto &MBB : MF) {
     unsigned NumInstrs = 0;
     for (auto &MI : MBB) {
-      if (!MI.isMetaInstruction()) {
+      if (!MI.isMetaInstruction() && !MI.isDebugOrPseudoInstr()) {
         NumInstrs++;
       }
     }
@@ -107,7 +107,8 @@ bool BPFInstrumentFinal::runOnMachineFunction(MachineFunction &MF) {
     auto *LoadImm = LoadImms[&MBB];
     // Patch up load to correspond to actual number of instructions in block
     auto &Imm = LoadImm->getOperand(1);
-    Imm.setImm(NumInstrs);
+    // Exclude instrumentation instructions
+    Imm.setImm(NumInstrs - 3);
   }
 
   return true;
