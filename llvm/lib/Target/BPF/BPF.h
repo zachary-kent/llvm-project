@@ -35,6 +35,7 @@ FunctionPass *createBPFConstPropPass();
 FunctionPass *createBPFDCEPass();
 FunctionPass *createBPFInstrumentInitialPass();
 FunctionPass *createBPFInstrumentFinalPass();
+FunctionPass *createBPFAliasPass();
 
 InstructionSelector *createBPFInstructionSelector(const BPFTargetMachine &,
                                                   const BPFSubtarget &,
@@ -51,6 +52,7 @@ void initializeBPFConstPropPass(PassRegistry &);
 void initializeBPFDCEPass(PassRegistry &);
 void initializeBPFInstrumentInitialPass(PassRegistry &);
 void initializeBPFInstrumentFinalPass(PassRegistry &);
+void initializeBPFAliasPass(PassRegistry &);
 
 class BPFAbstractMemberAccessPass
     : public PassInfoMixin<BPFAbstractMemberAccessPass> {

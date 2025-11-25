@@ -54,6 +54,9 @@ static cl::opt<bool>
 static cl::opt<bool>
     EnableDCE("bpf-enable-dce", cl::desc("Enable Dead Code Elimination on BPF bytecode"));
 
+static cl::opt<bool>
+    EnableAlias("bpf-enable-alias", cl::Hidden, cl::desc("Enable Alias analysis"));
+
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   // Register the target.
   RegisterTargetMachine<BPFTargetMachine> X(getTheBPFleTarget());
@@ -73,6 +76,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   initializeBPFDCEPass(PR);
   initializeBPFInstrumentInitialPass(PR);
   initializeBPFInstrumentFinalPass(PR);
+  initializeBPFAliasPass(PR);
 }
 
 static Reloc::Model getEffectiveRelocModel(std::optional<Reloc::Model> RM) {
@@ -185,6 +189,8 @@ void BPFPassConfig::addPostRegAlloc() {
     addPass(createBPFConstPropPass());
   if (EnableDCE)
     addPass(createBPFDCEPass());
+  if (EnableAlias)
+    addPass(createBPFAliasPass());
 }
 
 TargetTransformInfo

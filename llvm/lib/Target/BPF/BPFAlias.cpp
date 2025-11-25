@@ -16,58 +16,9 @@
 
 using namespace llvm;
 
-#define BPF_DCE_PASS_NAME "BPF DCE"
-
-// Copied from "llvm/lib/Target/BPFMISimplifyPatch.h"
-static bool isStoreImm(unsigned Opcode) {
-  return Opcode == BPF::STB_imm || Opcode == BPF::STH_imm ||
-         Opcode == BPF::STW_imm || Opcode == BPF::STD_imm;
-}
-
-static bool isStore32(unsigned Opcode) {
-  return Opcode == BPF::STB32 || Opcode == BPF::STH32 || Opcode == BPF::STW32 ||
-         Opcode == BPF::STBREL32 || Opcode == BPF::STHREL32 ||
-         Opcode == BPF::STWREL32;
-}
-
-static bool isStore64(unsigned Opcode) {
-  return Opcode == BPF::STB || Opcode == BPF::STH || Opcode == BPF::STW ||
-         Opcode == BPF::STD || Opcode == BPF::STDREL;
-}
-
-
-bool isBPFStore(const MachineInstr *MI) {
-  auto opcode = MI->getOpcode();
-  return isStoreImm(opcode) || isStore32(opcode) || isStore64(opcode);
-}
-
-bool hasSideEffects(const MachineInstr *MI) {
-  return isBPFStore(MI)
-    || MI->isPseudo()
-    || MI->hasUnmodeledSideEffects()
-    || MI->isCall()
-    || MI->isReturn()
-    || MI->isBranch();
-}
+#define BPF_ALIAS_PASS_NAME "BPF ALIAS"
 
 namespace {
-
-// template<typename T>
-// struct Interval {
-//   T lo;
-//   T hi;
-//   Interval(T lo, T hi) : lo(lo), hi(hi) {}
-//   Interval(T point) : lo(point), hi(point) {}
-//   bool contains(T point) const {
-//     return lo <= point && point <= hi;
-//   }
-//   bool disjoint(const Interval<T> &other) const {
-//     return other.hi < lo || hi < other.lo;
-//   }
-//   bool isPoint() const {
-//     return lo == hi;
-//   }
-// };
 
 template<typename T>
 std::optional<T> meet(const std::optional<T> &l, const std::optional<T> &r) {
@@ -82,9 +33,16 @@ struct Location {
     Global
   };
   Region region;
-  std::optional<unsigned> offset;
+  std::optional<int64_t> offset;
   Location() : region(Region::Stack), offset(0) {}
-  Location(Region region, unsigned offset) : region(region), offset(offset) {}
+  Location(Region region) : region(region) {}
+  Location(Region region, int64_t offset) : region(region), offset(offset) {}
+  bool disjoint(const Location &other) const {
+    return region != other.region || (offset && other.offset && *offset != *other.offset);
+  }
+  bool singleton(const Location &other) const {
+    return offset.has_value();
+  }
   bool operator==(const Location &other) const {
     return region == other.region && offset == other.offset;
   }
@@ -99,96 +57,113 @@ struct Location {
     }
     return glb;
   }
+  void add(int64_t offset) {
+    if (this->offset) {
+      *this->offset += offset;
+    }
+  }
+  friend raw_ostream &operator<<(raw_ostream &OS, const Location &L) {
+    switch (L.region) {
+      case Location::Region::Context: {
+        OS << "Context ";
+        break;
+      }
+      case Location::Region::Global: {
+        OS << "Global ";
+        break;
+      }
+      case Location::Region::Packet: {
+        OS << "Packet ";
+        break;
+      }
+      case Location::Region::Stack: {
+        OS << "Stack ";
+        break;
+      }
+    }
+    OS << L.offset;
+  }
+};
+
+struct LatticeElement {
+  //       T
+  //      / \
+  //     DP DNP
+  //      \ /
+  //      
+  enum class Level {
+    Top, // Not a pointer
+    Pointer, // Pointer residing in one region
+    Bot // May alias any pointer
+  };
+  Level level;
+  Location loc;
+  LatticeElement() : level(Level::Top) {}
+
+  LatticeElement(Location loc) : level(Level::Pointer), loc(std::move(loc)) {}
+
+  Location &getPointer() {
+    assert(level == Level::Pointer && "Is not pointer");
+    return loc;
+  }
+
+  bool operator==(const LatticeElement &other) const {
+    if (level != other.level)
+      return false;
+    switch (level) {
+      case Level::Top:
+      case Level::Bot: {
+        return true;
+      }
+      case Level::Pointer: {
+        return loc == other.loc;
+      }
+    }
+  }
+
+  void meet(const LatticeElement &other) {
+    if (level == Level::Bot || other.level == Level::Top)
+      return;
+    if (level == Level::Top || other.level == Level::Bot) {
+      *this = other;
+      return;
+    }
+    auto glb = loc.meet(other.loc);
+    if (glb) {
+      // greatest lower bound of pointers exist
+      // i.e. both point to the same memory region
+      loc = std::move(*glb);
+    } else {
+      // pointers point to different regions
+      level = Level::Bot;
+    }
+  }
+
+  void addOffset(int64_t offset) {
+    if (level == Level::Pointer) {
+      loc.add(offset);
+    }
+  }
+
+  friend raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
+    switch (LE.level) {
+      case LatticeElement::Level::Top: {
+        OS << "Undef";
+        break;
+      }
+      case LatticeElement::Level::Bot: {
+        OS << "Unknown";
+        break;
+      }
+      case LatticeElement::Level::Pointer: {
+        OS << "Pointer [" << LE.loc << ']';
+      }
+    }
+  }
 };
 
 class BPFAlias : public MachineFunctionPass {
 public:
-  struct LatticeElement {
-
-    //       T
-    //      / \
-    //     DP DNP
-    //      \ /
-    //      
-    enum class Height {
-      Top, // Not a pointer
-      Pointer, // Pointer residing in one region
-      Constant,
-      Bot // May alias any pointer
-    };
-    Height height;
-    union {
-      // Is constant when height is constant
-      unsigned constant;
-      // When
-      Location loc;
-    };
-    LatticeElement() : height(Height::Top) {}
-
-    LatticeElement(Location loc) : height(Height::Pointer), loc(std::move(loc)) {}
-    LatticeElement(unsigned constant) : height(Height::Constant), constant(constant) {}
-
-    Location &getPointer() {
-      assert(height == Height::Pointer && "Is not pointer");
-      return loc;
-    }
-
-    unsigned getConstant() const {
-      assert(height == Height::Constant && "Is not constant");
-      return constant;
-    }
-
-    bool operator==(const LatticeElement &other) const {
-      if (height != other.height)
-        return false;
-      switch (height) {
-        case Height::Top:
-        case Height::Bot: {
-          return true;
-        }
-        case Height::Pointer: {
-          return loc == other.loc;
-        }
-        case Height::Constant: {
-          return constant == other.constant;
-        }
-      }
-    }
-
-    void meet(const LatticeElement &other) {
-      if (height == Height::Bot || other.height == Height::Top)
-        return;
-      if (height == Height::Top || other.height == Height::Bot) {
-        *this = other;
-        return;
-      }
-      // Both are pointer or const
-      if (height != other.height) {
-        // One is pointer and one is const
-        height = Height::Bot;
-        return;
-      }
-      if (height == Height::Constant) {
-        if (constant != other.constant) {
-          // Both different constants
-          height = Height::Bot;
-        }
-        // otherwise both are same
-      } else { // height == Pointer
-        auto glb = loc.meet(other.loc);
-        if (glb) {
-          // greatest lower bound of pointers exist
-          // i.e. both point to the same memory region
-          loc = std::move(*glb);
-        } else {
-          // pointers point to different regions
-          height = Height::Bot;
-        }
-      }
-    }
-
-  };
-
   static char ID;
 
   BPFAlias() : MachineFunctionPass(ID) {
@@ -198,21 +173,16 @@ public:
   bool runOnMachineFunction(MachineFunction &MF) override;
 
   StringRef getPassName() const override {
-    return BPF_DCE_PASS_NAME;
+    return BPF_ALIAS_PASS_NAME;
   }
-
-private:
-  // Mapping from registers to the pointers they may point to
-  DenseMap<Register, LatticeElement> Info;
 };
 
 char BPFAlias::ID = 0;
 
 constexpr size_t NUM_BPF_REGS = 12;
 
-Register subRegToReg(Register R) {
-  if (R.isVirtual()) return R;
-  switch (R.asMCReg()) {
+MCRegister subRegToReg(MCRegister MCR) {
+  switch (MCR) {
     case BPF::W0:
       return BPF::R0;
     case BPF::W1:
@@ -237,217 +207,121 @@ Register subRegToReg(Register R) {
       return BPF::R10;
     case BPF::W11:
       return BPF::R11;
-    default:
-      return R;
+    default: {
+      errs() << "Unknown register\n";
+      std::abort();
+    }
   }
 }
 
-
-
-template<typename F>
-bool AnyOperand(const MachineInstr &MI, F &&f) {
-  static_assert(std::is_invocable_r_v<bool, F, const MachineOperand&>);
-  for (const auto &MO : MI.operands()) {
-    if (f(MO)) return true;
-  }
-  return false;
-}
-
-template<typename F>
-bool AnyDef(const MachineInstr &MI, F &&f) {
-  static_assert(std::is_invocable_r_v<bool, F, const Register&>);
-  for (const auto &MO : MI.operands()) {
-    if (!MO.isReg() || !MO.isDef()) continue;
-    if (f(MO.getReg())) return true;
-  }
-  return false;
-}
+using PointerInfo = std::array<LatticeElement, NUM_BPF_REGS>;
 
 constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
   BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, 
   BPF::R6, BPF::R7, BPF::R8, BPF::R9, BPF::R10, BPF::R11
 };
 
+constexpr int64_t BPF_MAP_LOOKUP_INDEX = 1;
+
+template<typename T>
+void print_array(const std::array<T, NUM_BPF_REGS> &arr) {
+  outs() << '[';
+  for (size_t i = 0; i < NUM_BPF_REGS; i++) {
+    outs() << 'R' << i << " = " << arr[i];
+    if (i < NUM_BPF_REGS - 1) {
+      outs() << ", ";
+    }
+  }
+  outs() << "]\n";
+}
+
 bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
-  auto &MRI = MF.getRegInfo();
-  assert(!MRI.livein_empty() && "Cannot find context pointer");
-  // Initially contains pointer to XDP context structure
-  auto [copy, r1] = *MRI.livein_begin();
-  Location Ctx(Location::Region::Context, 0);
-  Info.try_emplace(r1, Ctx);
-  Info.try_emplace(copy, std::move(Ctx));
-  
-  SetVector<MachineInstr*> worklist;
-  // Initialize to all defs
-  for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
-      if (MI.getNumDefs() > 0 || MI.isCall()) {
-        worklist.insert(&MI);
-      }
-      for (auto &Op : MI.operands()) {
-        if (Op.isReg()) {
-          Info.try_emplace(Op.getReg());
-        }
-      }
-    }
-  }
-  while (!worklist.empty()) {
-    auto *MI = worklist.pop_back_val();
-    Register Def;
-    if (MI->getNumDefs() > 0) {
-      Def = subRegToReg(MI->defs().begin()->getReg());
-    } else {
-      assert(MI->isCall() && "Instruction has no defs and is not call");
-      Def = BPF::R0;
-    }
-    LatticeElement NewInfo;
-    NewInfo.height = LatticeElement::Height::Bot;
-    if (MI->isMoveReg()) {
-      auto &Src = MI->getOperand(1);
-      assert(Src.isReg() && Src.isUse() && "Operand 1 of Mov Reg is not Reg Use");
-      NewInfo = Info[subRegToReg(Src.getReg())];
-    } else if (MI->isMoveImmediate()) {
-      auto &Src = MI->getOperand(1);
-      assert(Src.isImm() && Src.isUse() && "Operand 1 of Mov Imm is not Imm Use");
-      NewInfo = Src.getImm();
-    } else if (MI->isPHI()) {
-      // Initialize `NewInfo` to top
-      NewInfo = {};
-      for (unsigned i = 1; i < MI->getNumOperands(); i += 2) {
-        auto IncomingValue = MI->getOperand(i).getReg();
-        NewInfo.meet(Info[subRegToReg(IncomingValue)]);
-      }
-    } else if (MI->isCall()) {
-      for (auto &Op : MI->operands()) {
-        if (Op.isRegMask()) {
-          for (auto MCR : BPF_REGS) {
-            if (Info.contains(MCR) && Op.clobbersPhysReg(MCR)) {
-              
-            }
-          }
-        }
-      }
-    } else {
-      switch (MI->getOpcode()) {
-        case BPF::SUBREG_TO_REG: {
-          int64_t index = MI->getOperand(1).getImm();
-          assert(index == 0 && "Subreg to reg with nonzero index");
-          Register Src = MI->getOperand(2).getReg();
-          NewInfo = 
-        }
-        case
-      }
-    }
-  }
+  outs() << "Hello from const prop\n";
 
-  // In
-  outs() << "Starting dce\n";
+  const auto &TSI = MF.getSubtarget();
+  const auto *TRI = TSI.getRegisterInfo();
 
-  const auto *TRI = MF.getSubtarget().getRegisterInfo();
+  // Initially, r1 points to the beginning of the context region and r10 to the stack
+  PointerInfo boundary;
+  boundary[TRI->getEncodingValue(BPF::R1)] = Location(Location::Region::Context, 0);
+  boundary[TRI->getEncodingValue(BPF::R10)] = Location(Location::Region::Stack, 0);
 
   // Dataflow values at entry of every instruction
-  DenseMap<MachineInstr*, BitVector> live_out;
+  DenseMap<MachineInstr*, PointerInfo> PointerIn;
 
-  BitVector boundary(NUM_BPF_REGS);
-  boundary.set(0);
-
-  Parameters<BitVector, MachineBasicBlock> Params = {
-    .direction = Direction::Backward,
-    .top = BitVector(NUM_BPF_REGS),
+  Parameters<PointerInfo, MachineBasicBlock> Params = {
+    .direction = Direction::Forward,
+    .top = PointerInfo(),
     .boundary = std::move(boundary),
-    .meet = [](BitVector& A, const BitVector &B) {
-      A |= B;
+    .meet = [](PointerInfo &A, const PointerInfo &B) {
+      // Pointwise meet
+      for (size_t i = 0; i < NUM_BPF_REGS; i++) {
+        A[i].meet(B[i]);
+      }
     },
-    .transfer = [&](MachineBasicBlock &MBB, BitVector &out) {
-      for (auto I = MBB.rbegin(); I != MBB.rend(); ++I) {
-        auto &MI = *I;
-        live_out[&MI] = out;
-
-        bool defines_live_var = AnyDef(MI, [&](const auto &Def) {
-          return out[TRI->getEncodingValue(Def)];
-        });
-
-        if (!hasSideEffects(&MI) && !defines_live_var) continue;
-
-        // Kill all registers defined
-        for (const MachineOperand &def : MI.operands()) {
-          // Skip non-definitions
-          if (!def.isReg() || !def.isDef()) continue;
-
-          auto dest_reg = def.getReg();
-          auto dest_reg_num = TRI->getEncodingValue(dest_reg);
-
-          out.reset(dest_reg_num);
-        }
-
-        // Do not propagate liveness on
-        // dead instruction with no side effects
-        // Gen all variable used
-        for (auto &use : MI.uses()) {
-          if (use.isReg()) {
-            // outs() << "USE - propogating liveness to " << use << "\n";
-            auto src_reg_num = TRI->getEncodingValue(use.getReg());
-            out.set(src_reg_num);
+    .transfer = [&](MachineBasicBlock &MBB, PointerInfo &In) {
+      for (auto &MI : MBB) {
+        PointerIn[&MI] = In;
+        // Bottom out all definitions at first
+        switch (MI.getOpcode()) {
+          case BPF::MOV_rr:
+          case BPF::MOV_rr_32: {
+            // Treat as copy
+            auto Dst = subRegToReg(MI.getOperand(0).getReg());
+            auto Src = subRegToReg(MI.getOperand(1).getReg());
+            In[Dst] = In[Src];
+          }
+          case BPF::ADD_ri:
+          case BPF::ADD_ri_32: {
+            MCRegister Dst = subRegToReg(MI.getOperand(0).getReg());
+            int64_t Off = MI.getOperand(2).getImm();
+            In[Dst].addOffset(Off);
+          }
+          default: {
+            for (const auto &Def : MI.defs()) {
+              In[TRI->getEncodingValue(subRegToReg(Def.getReg()))].level = LatticeElement::Level::Bot;
+            }
+            if (MI.isCall()) {
+              for (const auto &MO : MI.operands()) {
+                if (MO.isRegMask()) {
+                  for (size_t i = 0; i < NUM_BPF_REGS; i++) {
+                    if (MO.clobbersPhysReg(BPF_REGS[i])) {
+                      In[i].level = LatticeElement::Level::Bot;
+                    }
+                  }
+                }
+              }
+              if (MI.getOperand(0).getImm() == BPF_MAP_LOOKUP_INDEX) {
+                In[TRI->getEncodingValue(BPF::R0)] = Location(Location::Region::Global);
+              } else {
+                In[TRI->getEncodingValue(BPF::R0)].level = LatticeElement::Level::Bot;
+              }
+            }
           }
         }
       }
     }
   };
 
-  compute(Params, MF);
-
-  DenseSet<MachineInstr*> delete_worklist;
-  
-  bool erased_instruction = false;
-  for(auto &MBB : MF) {
-    for (auto I = MBB.begin(); I != MBB.end(); ++I) {
-      auto &MI = *I;
-
-      // Don't erase if the instruction has side-effects
-      if (hasSideEffects(&MI)) continue;
-
-      bool delete_this_instruction = true;
-
-      // If all registers defined by this instruction are not live, we can kill the instruction
-      for (const MachineOperand &def : MI.operands()) {
-        if (!def.isReg()) continue;
-        if (!def.isDef()) continue;
-        auto reg = def.getReg();
-        auto real_reg_num = TRI->getEncodingValue(reg);
-
-        if (live_out[&MI][real_reg_num]) {
-          delete_this_instruction = false;
-          break;
-        }
-      }
-  
-      if (delete_this_instruction){
-        delete_worklist.insert(&MI);
-      }
+  for (auto &MBB : MF) {
+    for (auto &MI : MBB) {
+      print_array(PointerIn[&MI]);
     }
   }
-
-  for(auto MI : delete_worklist) {
-    outs() << "Erasing instruction " << *MI << "\n";
-    MI->eraseFromParent();
-  }
-
-
-  return erased_instruction;
 }
 
 } // end of anonymous namespace
 
-INITIALIZE_PASS(BPFDCE, "bpf-dce",
-                BPF_DCE_PASS_NAME,
+INITIALIZE_PASS(BPFAlias, "bpf-alias",
+                BPF_ALIAS_PASS_NAME,
                 true, // is CFG only?
-                true  // is analysis?
+                false  // is analysis?
 )
 
 namespace llvm {
 
-FunctionPass *createBPFDCEPass() {
-  return new BPFDCE();
+FunctionPass *createBPFAliasPass() {
+  return new BPFAlias();
 }
 
 } // namespace llvm
