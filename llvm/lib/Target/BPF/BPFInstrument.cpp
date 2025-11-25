@@ -95,6 +95,7 @@ char BPFInstrumentFinal::ID = 0;
 
 bool BPFInstrumentFinal::runOnMachineFunction(MachineFunction &MF) {
   auto &LoadImms = MF.getInfo<BPFFunctionInfo>()->LoadImms;
+  MF.dump();
 
   for (auto &MBB : MF) {
     unsigned NumInstrs = 0;
