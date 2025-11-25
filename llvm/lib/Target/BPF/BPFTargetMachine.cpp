@@ -189,8 +189,6 @@ void BPFPassConfig::addPostRegAlloc() {
     addPass(createBPFConstPropPass());
   if (EnableDCE)
     addPass(createBPFDCEPass());
-  if (EnableAlias)
-    addPass(createBPFAliasPass());
 }
 
 TargetTransformInfo
@@ -225,6 +223,8 @@ void BPFPassConfig::addPreEmitPass() {
   if (getOptLevel() != CodeGenOptLevel::None)
     if (!DisableMIPeephole)
       addPass(createBPFMIPreEmitPeepholePass());
+  if (EnableAlias)
+    addPass(createBPFAliasPass());
   if (EnableInstrumentation)
     addPass(createBPFInstrumentFinalPass());
 }

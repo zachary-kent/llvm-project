@@ -82,6 +82,7 @@ struct Location {
       }
     }
     OS << L.offset;
+    return OS;
   }
 };
 
@@ -157,8 +158,10 @@ struct LatticeElement {
       }
       case LatticeElement::Level::Pointer: {
         OS << "Pointer [" << LE.loc << ']';
+        break;
       }
     }
+    return OS;
   }
 };
 
@@ -207,10 +210,8 @@ MCRegister subRegToReg(MCRegister MCR) {
       return BPF::R10;
     case BPF::W11:
       return BPF::R11;
-    default: {
-      errs() << "Unknown register\n";
-      std::abort();
-    }
+    default:
+      return MCR;
   }
 }
 
@@ -227,7 +228,7 @@ template<typename T>
 void print_array(const std::array<T, NUM_BPF_REGS> &arr) {
   outs() << '[';
   for (size_t i = 0; i < NUM_BPF_REGS; i++) {
-    outs() << 'R' << i << " = " << arr[i];
+    outs() << 'R' << i << " = " << arr.at(i);
     if (i < NUM_BPF_REGS - 1) {
       outs() << ", ";
     }
@@ -236,8 +237,6 @@ void print_array(const std::array<T, NUM_BPF_REGS> &arr) {
 }
 
 bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
-  outs() << "Hello from const prop\n";
-
   const auto &TSI = MF.getSubtarget();
   const auto *TRI = TSI.getRegisterInfo();
 
@@ -260,6 +259,9 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
       }
     },
     .transfer = [&](MachineBasicBlock &MBB, PointerInfo &In) {
+      auto getInfo = [&](MCRegister MCR) -> LatticeElement& {
+        return In[TRI->getEncodingValue(subRegToReg(MCR))];
+      };
       for (auto &MI : MBB) {
         PointerIn[&MI] = In;
         // Bottom out all definitions at first
@@ -267,19 +269,42 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
           case BPF::MOV_rr:
           case BPF::MOV_rr_32: {
             // Treat as copy
-            auto Dst = subRegToReg(MI.getOperand(0).getReg());
-            auto Src = subRegToReg(MI.getOperand(1).getReg());
-            In[Dst] = In[Src];
+            assert(MI.getOperand(0).isReg() && "Dest not reg");
+            assert(MI.getOperand(1).isReg() && "Src not reg");
+            auto Dst = MI.getOperand(0).getReg();
+            auto Src = MI.getOperand(1).getReg();
+            getInfo(Dst) = getInfo(Src);
+            break;
+          }
+          case BPF::LDW32: {
+            assert(MI.getOperand(0).isReg() && "Dest not reg");
+            assert(MI.getOperand(1).isReg() && "Base not reg");
+            assert(MI.getOperand(2).isImm() && "Offset not immediate");
+            auto Dest = MI.getOperand(0).getReg();
+            auto Base = MI.getOperand(1).getReg();
+            auto Off = MI.getOperand(2).getImm();
+            const auto &BaseInfo = getInfo(Base);
+            if (BaseInfo.level == LatticeElement::Level::Pointer 
+                && BaseInfo.loc.region == Location::Region::Context
+                && (BaseInfo.loc.offset == -Off || BaseInfo.loc.offset == 4 - Off)) {
+              getInfo(Dest) = Location(Location::Region::Packet);
+            } else {
+              getInfo(Dest).level = LatticeElement::Level::Bot;
+            }
+            break;
           }
           case BPF::ADD_ri:
           case BPF::ADD_ri_32: {
-            MCRegister Dst = subRegToReg(MI.getOperand(0).getReg());
+            assert(MI.getOperand(0).isReg() && "Dest not reg");
+            MCRegister Dst = MI.getOperand(0).getReg();
             int64_t Off = MI.getOperand(2).getImm();
-            In[Dst].addOffset(Off);
+            getInfo(Dst).addOffset(Off);
+            break;
           }
           default: {
             for (const auto &Def : MI.defs()) {
-              In[TRI->getEncodingValue(subRegToReg(Def.getReg()))].level = LatticeElement::Level::Bot;
+              assert(Def.isReg() && "Dest not reg");
+              getInfo(Def.getReg()).level = LatticeElement::Level::Bot;
             }
             if (MI.isCall()) {
               for (const auto &MO : MI.operands()) {
@@ -292,9 +317,9 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
                 }
               }
               if (MI.getOperand(0).getImm() == BPF_MAP_LOOKUP_INDEX) {
-                In[TRI->getEncodingValue(BPF::R0)] = Location(Location::Region::Global);
+                getInfo(BPF::R0) = Location(Location::Region::Global);
               } else {
-                In[TRI->getEncodingValue(BPF::R0)].level = LatticeElement::Level::Bot;
+                getInfo(BPF::R0).level = LatticeElement::Level::Bot;
               }
             }
           }
@@ -303,11 +328,18 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
     }
   };
 
-  for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
-      print_array(PointerIn[&MI]);
-    }
-  }
+  compute(Params, MF);
+
+  // for (auto &MBB : MF) {
+  //   for (auto &MI : MBB) {
+  //     if (!MI.isMetaInstruction() && !MI.isDebugOrPseudoInstr()) {
+  //       outs() << MI;
+  //       print_array(PointerIn[&MI]);
+  //     }
+  //   }
+  // }
+
+  return false;
 }
 
 } // end of anonymous namespace
