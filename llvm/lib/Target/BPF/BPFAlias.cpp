@@ -6,6 +6,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Pass.h"
 #include "Dataflow.h"
+#include "BPFAlias.hpp"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SetVector.h"
 
@@ -18,152 +19,133 @@ using namespace llvm;
 
 #define BPF_ALIAS_PASS_NAME "BPF ALIAS"
 
-namespace {
-
 template<typename T>
 std::optional<T> meet(const std::optional<T> &l, const std::optional<T> &r) {
   return l && r && *l == *r ? l : std::nullopt;
 }
 
-struct Location {
-  enum class Region {
-    Packet,
-    Stack,
-    Context,
-    Global
-  };
-  Region region;
-  std::optional<int64_t> offset;
-  Location() : region(Region::Stack), offset(0) {}
-  Location(Region region) : region(region) {}
-  Location(Region region, int64_t offset) : region(region), offset(offset) {}
-  bool disjoint(const Location &other) const {
-    return region != other.region || (offset && other.offset && *offset != *other.offset);
-  }
-  bool singleton(const Location &other) const {
-    return offset.has_value();
-  }
-  bool operator==(const Location &other) const {
-    return region == other.region && offset == other.offset;
-  }
-  bool operator!=(const Location &other) const {
-    return !(*this == other);
-  }
-  std::optional<Location> meet(const Location &other) const {
-    if (region != other.region) return std::nullopt;
-    Location glb = *this;
-    if (offset != other.offset) {
-      glb.offset.reset();
-    }
-    return glb;
-  }
-  void add(int64_t offset) {
-    if (this->offset) {
-      *this->offset += offset;
-    }
-  }
-  friend raw_ostream &operator<<(raw_ostream &OS, const Location &L) {
-    switch (L.region) {
-      case Location::Region::Context: {
-        OS << "Context ";
-        break;
-      }
-      case Location::Region::Global: {
-        OS << "Global ";
-        break;
-      }
-      case Location::Region::Packet: {
-        OS << "Packet ";
-        break;
-      }
-      case Location::Region::Stack: {
-        OS << "Stack ";
-        break;
-      }
-    }
-    OS << L.offset;
-    return OS;
-  }
-};
+Location::Location() : region(Region::Stack), offset(0) {}
+Location::Location(Region region) : region(region) {}
+Location::Location(Region region, int64_t offset) : region(region), offset(offset) {}
 
-struct LatticeElement {
-  //       T
-  //      / \
-  //     DP DNP
-  //      \ /
-  //      
-  enum class Level {
-    Top, // Not a pointer
-    Pointer, // Pointer residing in one region
-    Bot // May alias any pointer
-  };
-  Level level;
-  Location loc;
-  LatticeElement() : level(Level::Top) {}
+bool Location::disjoint(const Location &other) const {
+  return region != other.region || (offset && other.offset && *offset != *other.offset);
+}
 
-  LatticeElement(Location loc) : level(Level::Pointer), loc(std::move(loc)) {}
+bool Location::singleton(const Location &other) const {
+  return offset.has_value();
+}
 
-  Location &getPointer() {
-    assert(level == Level::Pointer && "Is not pointer");
-    return loc;
+bool Location::operator==(const Location &other) const {
+  return region == other.region && offset == other.offset;
+}
+
+bool Location::operator!=(const Location &other) const {
+  return !(*this == other);
+}
+
+std::optional<Location> Location::meet(const Location &other) const {
+  if (region != other.region) return std::nullopt;
+  Location glb = *this;
+  if (offset != other.offset) {
+    glb.offset.reset();
   }
+  return glb;
+}
 
-  bool operator==(const LatticeElement &other) const {
-    if (level != other.level)
-      return false;
-    switch (level) {
-      case Level::Top:
-      case Level::Bot: {
-        return true;
-      }
-      case Level::Pointer: {
-        return loc == other.loc;
-      }
+void Location::add(int64_t offset) {
+  if (this->offset) {
+    *this->offset += offset;
+  }
+}
+
+raw_ostream &operator<<(raw_ostream &OS, const Location &L) {
+  switch (L.region) {
+    case Location::Region::Context: {
+      OS << "Context ";
+      break;
+    }
+    case Location::Region::Global: {
+      OS << "Global ";
+      break;
+    }
+    case Location::Region::Packet: {
+      OS << "Packet ";
+      break;
+    }
+    case Location::Region::Stack: {
+      OS << "Stack ";
+      break;
     }
   }
+  OS << L.offset;
+  return OS;
+}
 
-  void meet(const LatticeElement &other) {
-    if (level == Level::Bot || other.level == Level::Top)
-      return;
-    if (level == Level::Top || other.level == Level::Bot) {
-      *this = other;
-      return;
+LatticeElement::LatticeElement(Location loc) : level(Level::Pointer), loc(std::move(loc)) {}
+
+Location &LatticeElement::getPointer() {
+  assert(level == Level::Pointer && "Is not pointer");
+  return loc;
+}
+
+bool LatticeElement::operator==(const LatticeElement &other) const {
+  if (level != other.level)
+    return false;
+  switch (level) {
+    case Level::Top:
+    case Level::Bot: {
+      return true;
     }
-    auto glb = loc.meet(other.loc);
-    if (glb) {
-      // greatest lower bound of pointers exist
-      // i.e. both point to the same memory region
-      loc = std::move(*glb);
-    } else {
-      // pointers point to different regions
-      level = Level::Bot;
+    case Level::Pointer: {
+      return loc == other.loc;
     }
   }
+}
 
-  void addOffset(int64_t offset) {
-    if (level == Level::Pointer) {
-      loc.add(offset);
+void LatticeElement::meet(const LatticeElement &other) {
+  if (level == Level::Bot || other.level == Level::Top)
+    return;
+  if (level == Level::Top || other.level == Level::Bot) {
+    *this = other;
+    return;
+  }
+  auto glb = loc.meet(other.loc);
+  if (glb) {
+    // greatest lower bound of pointers exist
+    // i.e. both point to the same memory region
+    loc = std::move(*glb);
+  } else {
+    // pointers point to different regions
+    level = Level::Bot;
+  }
+}
+
+void LatticeElement::addOffset(int64_t offset) {
+  if (level == Level::Pointer) {
+    loc.add(offset);
+  }
+}
+
+raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
+  switch (LE.level) {
+    case LatticeElement::Level::Top: {
+      OS << "Undef";
+      break;
+    }
+    case LatticeElement::Level::Bot: {
+      OS << "Unknown";
+      break;
+    }
+    case LatticeElement::Level::Pointer: {
+      OS << "Pointer [" << LE.loc << ']';
+      break;
     }
   }
+  return OS;
+}
 
-  friend raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
-    switch (LE.level) {
-      case LatticeElement::Level::Top: {
-        OS << "Undef";
-        break;
-      }
-      case LatticeElement::Level::Bot: {
-        OS << "Unknown";
-        break;
-      }
-      case LatticeElement::Level::Pointer: {
-        OS << "Pointer [" << LE.loc << ']';
-        break;
-      }
-    }
-    return OS;
-  }
-};
+namespace {
 
 class BPFAlias : public MachineFunctionPass {
 public:
