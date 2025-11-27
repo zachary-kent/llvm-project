@@ -157,8 +157,6 @@ BPFAlias::BPFAlias() : MachineFunctionPass(ID) {
   initializeBPFDCEPass(*PassRegistry::getPassRegistry());
 }
 
-constexpr size_t NUM_BPF_REGS = 12;
-
 MCRegister subRegToReg(MCRegister MCR) {
   switch (MCR) {
     case BPF::W0:
@@ -190,8 +188,6 @@ MCRegister subRegToReg(MCRegister MCR) {
   }
 }
 
-using PointerInfo = std::array<LatticeElement, NUM_BPF_REGS>;
-
 constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
   BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, 
   BPF::R6, BPF::R7, BPF::R8, BPF::R9, BPF::R10, BPF::R11
@@ -219,9 +215,6 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
   PointerInfo boundary;
   boundary[TRI->getEncodingValue(BPF::R1)] = Location(Location::Region::Context, 0);
   boundary[TRI->getEncodingValue(BPF::R10)] = Location(Location::Region::Stack, 0);
-
-  // Dataflow values at entry of every instruction
-  DenseMap<MachineInstr*, PointerInfo> PointerIn;
 
   Parameters<PointerInfo, MachineBasicBlock> Params = {
     .direction = Direction::Forward,

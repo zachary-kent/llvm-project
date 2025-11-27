@@ -3,6 +3,8 @@
 #include <optional>
 #include "llvm/Support/raw_ostream.h"
 
+constexpr size_t NUM_BPF_REGS = 12;
+
 struct Location {
   enum class Region {
     Packet,
@@ -54,8 +56,10 @@ struct LatticeElement {
 
 class BPFAlias : public llvm::MachineFunctionPass {
 public:
+  using PointerInfo = std::array<LatticeElement, NUM_BPF_REGS>;
   static char ID;
   BPFAlias();
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
   llvm::StringRef getPassName() const override;
+  llvm::DenseMap<llvm::MachineInstr*, PointerInfo> PointerIn;
 };
