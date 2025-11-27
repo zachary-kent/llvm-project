@@ -51,3 +51,11 @@ struct LatticeElement {
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const LatticeElement &LE);
 };
+
+class BPFAlias : public llvm::MachineFunctionPass {
+public:
+  static char ID;
+  BPFAlias();
+  bool runOnMachineFunction(llvm::MachineFunction &MF) override;
+  llvm::StringRef getPassName() const override;
+};

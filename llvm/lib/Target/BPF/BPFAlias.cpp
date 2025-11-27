@@ -147,24 +147,15 @@ raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
   return OS;
 }
 
-namespace {
-
-class BPFAlias : public MachineFunctionPass {
-public:
-  static char ID;
-
-  BPFAlias() : MachineFunctionPass(ID) {
-    initializeBPFDCEPass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnMachineFunction(MachineFunction &MF) override;
-
-  StringRef getPassName() const override {
-    return BPF_ALIAS_PASS_NAME;
-  }
-};
-
 char BPFAlias::ID = 0;
+
+StringRef BPFAlias::getPassName() const {
+  return BPF_ALIAS_PASS_NAME;
+}
+
+BPFAlias::BPFAlias() : MachineFunctionPass(ID) {
+  initializeBPFDCEPass(*PassRegistry::getPassRegistry());
+}
 
 constexpr size_t NUM_BPF_REGS = 12;
 
@@ -325,8 +316,6 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
 
   return false;
 }
-
-} // end of anonymous namespace
 
 INITIALIZE_PASS(BPFAlias, "bpf-alias",
                 BPF_ALIAS_PASS_NAME,
