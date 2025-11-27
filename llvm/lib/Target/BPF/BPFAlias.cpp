@@ -82,6 +82,8 @@ raw_ostream &operator<<(raw_ostream &OS, const Location &L) {
   return OS;
 }
 
+LatticeElement::LatticeElement() : level(Level::Top) {}
+
 LatticeElement::LatticeElement(Location loc) : level(Level::Pointer), loc(std::move(loc)) {}
 
 Location &LatticeElement::getPointer() {
