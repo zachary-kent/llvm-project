@@ -2,6 +2,10 @@
 
 #include <optional>
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/Pass.h"
+#include "llvm/CodeGen/MachineFunctionPass.h"
 
 constexpr size_t NUM_BPF_REGS = 12;
 
@@ -53,6 +57,8 @@ struct LatticeElement {
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const LatticeElement &LE);
 };
+
+llvm::MCRegister subRegToReg(llvm::MCRegister MCR);
 
 class BPFAlias : public llvm::MachineFunctionPass {
 public:

@@ -48,6 +48,7 @@ add_llvm_target(BPFCodeGen
   BPFDCE.cpp
   BPFInstrument.cpp
   BPFAlias.cpp
+  BPFSLP.cpp
 
   LINK_COMPONENTS
   Analysis
