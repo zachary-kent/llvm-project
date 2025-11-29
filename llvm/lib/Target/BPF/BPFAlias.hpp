@@ -6,6 +6,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/Pass.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
+#include "llvm/CodeGen/MachineInstr.h"
 
 constexpr size_t NUM_BPF_REGS = 12;
 
@@ -54,6 +55,7 @@ struct LatticeElement {
   void meet(const LatticeElement &other);
 
   void addOffset(int64_t offset);
+  bool disjoint(const LatticeElement &Other) const;
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const LatticeElement &LE);
 };
@@ -68,4 +70,7 @@ public:
   bool runOnMachineFunction(llvm::MachineFunction &MF) override;
   llvm::StringRef getPassName() const override;
   llvm::DenseMap<llvm::MachineInstr*, PointerInfo> PointerIn;
+  bool conflict(const llvm::MachineInstr &MI1, const llvm::MachineInstr &MI2) const;
+  const LatticeElement &getInfo(const llvm::MachineInstr &MI, llvm::MCRegister MCR) const;
+  LatticeElement getInfo(const llvm::MachineInstr &MI) const;
 };

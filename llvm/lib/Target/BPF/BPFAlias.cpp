@@ -129,6 +129,15 @@ void LatticeElement::addOffset(int64_t offset) {
   }
 }
 
+bool LatticeElement::disjoint(const LatticeElement &Other) const {
+  if (level == Level::Bot || Other.level == Level::Bot)
+    // Either this or other may alias anything
+    return false;
+  assert(level != Level::Top && Other.level != Level::Top && "Top encountered");
+  // Return whether the abstract locations are disjoint
+  return loc.disjoint(Other.loc);
+}
+
 raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
   switch (LE.level) {
     case LatticeElement::Level::Top: {
@@ -205,6 +214,123 @@ void print_array(const std::array<T, NUM_BPF_REGS> &arr) {
     }
   }
   outs() << "]\n";
+}
+
+static bool isStoreImm(unsigned Opcode) {
+  return Opcode == BPF::STB_imm || Opcode == BPF::STH_imm ||
+         Opcode == BPF::STW_imm || Opcode == BPF::STD_imm;
+}
+
+static bool isStore32(unsigned Opcode) {
+  return Opcode == BPF::STB32 || Opcode == BPF::STH32 || Opcode == BPF::STW32 ||
+         Opcode == BPF::STBREL32 || Opcode == BPF::STHREL32 ||
+         Opcode == BPF::STWREL32;
+}
+
+static bool isStore64(unsigned Opcode) {
+  return Opcode == BPF::STB || Opcode == BPF::STH || Opcode == BPF::STW ||
+         Opcode == BPF::STD || Opcode == BPF::STDREL;
+}
+
+static bool isStoreInst(unsigned Opcode) {
+  return isStoreImm(Opcode) || isStore32(Opcode) || isStore64(Opcode);
+}
+
+static bool isLoad32(unsigned Opcode) {
+  return Opcode == BPF::LDB32 || Opcode == BPF::LDH32 || Opcode == BPF::LDW32 ||
+         Opcode == BPF::LDBACQ32 || Opcode == BPF::LDHACQ32 ||
+         Opcode == BPF::LDWACQ32;
+}
+
+static bool isLoad64(unsigned Opcode) {
+  return Opcode == BPF::LDB || Opcode == BPF::LDH || Opcode == BPF::LDW ||
+         Opcode == BPF::LDD || Opcode == BPF::LDDACQ;
+}
+
+unsigned memorySize(unsigned Opcode) {
+  switch (Opcode) {
+    // Store byte
+    case BPF::STB: case BPF::STB_imm: case BPF::STB32: case BPF::STBREL32:
+    // Load byte
+    case BPF::LDB: case BPF::LDB32: case BPF::LDBACQ32: case BPF::LD_ABS_B: case BPF::LD_IND_B:
+      return 1;
+    // Store half-word
+    case BPF::STH: case BPF::STH_imm: case BPF::STH32: case BPF::STHREL32:
+    // Load half-word
+    case BPF::LDH: case BPF::LDH32: case BPF::LDHACQ32: case BPF::LD_ABS_H: case BPF::LD_IND_H:
+      return 2;
+    // Store word
+    case BPF::STW: case BPF::STW_imm: case BPF::STW32: case BPF::STWREL32:
+    // Load word
+    case BPF::LDW: case BPF::LDW32: case BPF::LDWACQ32: case BPF::LD_ABS_W: case BPF::LD_IND_W:
+      return 4;
+    // Store double-word
+    case BPF::STD: case BPF::STD_imm:
+    // Load double-word
+    case BPF::LDD: case BPF::LDDACQ:
+      return 8;
+    default: {
+      errs() << "Unknown opcode " << Opcode << '\n';
+      std::abort();
+    }
+  }
+}
+
+unsigned memorySize(const MachineInstr &MI) {
+  return memorySize(MI.getOpcode());
+}
+
+static bool isLoadSext(unsigned Opcode) {
+  return Opcode == BPF::LDBSX || Opcode == BPF::LDHSX || Opcode == BPF::LDWSX;
+}
+
+bool isLoadInst(unsigned Opcode) {
+  return isLoad32(Opcode) || isLoad64(Opcode) || isLoadSext(Opcode);
+}
+
+bool isLoadInst(const MachineInstr &MI) {
+  return isLoadInst(MI.getOpcode());
+}
+
+bool isStoreInst(const MachineInstr &MI) {
+  return isStoreInst(MI.getOpcode());
+}
+
+bool isMemInst(unsigned Opcode) {
+  return isLoadInst(Opcode) || isStoreInst(Opcode);
+}
+
+bool isMemInst(const MachineInstr &MI) {
+  return isMemInst(MI.getOpcode());
+}
+
+bool BPFAlias::conflict(const MachineInstr &MI1, const MachineInstr &MI2) const {
+  if (!isMemInst(MI1) || !isMemInst(MI2))
+    // One instruction not a load or store
+    return false;
+  if (!isStoreInst(MI1) && !isStoreInst(MI2))
+    // Both are loads
+    return false;
+  auto LE1 = getInfo(MI1);
+  auto LE2 = getInfo(MI2);
+  // Abstract locations represented overlap
+  return !LE1.disjoint(LE2);
+}
+
+LatticeElement BPFAlias::getInfo(const llvm::MachineInstr &MI) const {
+  assert(MI.getOperand(1).isReg());
+  assert(MI.getOperand(2).isImm());
+  auto Base = MI.getOperand(1).getReg().asMCReg();
+  auto Off = MI.getOperand(2).getImm();
+  auto LE = getInfo(MI, Base);
+  LE.addOffset(Off);
+  return LE;
+}
+
+const LatticeElement &BPFAlias::getInfo(const llvm::MachineInstr &MI, llvm::MCRegister MCR) const {
+  const auto *TRI = MI.getParent()->getParent()->getSubtarget().getRegisterInfo();
+  const auto &PtrInfo = PointerIn.at(&MI);
+  return PtrInfo.at(TRI->getEncodingValue(subRegToReg(MCR)));
 }
 
 bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
