@@ -113,6 +113,13 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
             dependencies[&MI2].insert(&MI1);
           }
         }
+        if (AliasInfo.conflict(MI1, MI2)) {
+          // Both MI1 and MI2 are memory ops, at least one store
+          // Both operate on overlapping locations
+          outs() << "Hit!\n";
+          dependents[&MI1].insert(&MI2);
+          dependencies[&MI2].insert(&MI1);
+        }
       }
       for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
         // Iterate over all instructions before this instruction

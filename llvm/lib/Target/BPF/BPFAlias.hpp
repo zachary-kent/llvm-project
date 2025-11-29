@@ -23,6 +23,7 @@ struct Location {
   Location(Region region);
   Location(Region region, int64_t offset);
   bool disjoint(const Location &other) const;
+  bool disjoint(const Location &other, unsigned Size1, unsigned Size2) const;
   bool singleton(const Location &other) const;
   bool operator==(const Location &other) const;
   bool operator!=(const Location &other) const;
@@ -56,6 +57,7 @@ struct LatticeElement {
 
   void addOffset(int64_t offset);
   bool disjoint(const LatticeElement &Other) const;
+  bool disjoint(const LatticeElement &Other, unsigned Size1, unsigned Size2) const;
 
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const LatticeElement &LE);
 };

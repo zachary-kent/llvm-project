@@ -32,6 +32,18 @@ bool Location::disjoint(const Location &other) const {
   return region != other.region || (offset && other.offset && *offset != *other.offset);
 }
 
+bool Location::disjoint(const Location &other, unsigned Size1, unsigned Size2) const {
+  if (region != other.region)
+    // Point to different regions, can never alias
+    return true;
+  if (!offset || !other.offset)
+    // One pointer may span entire region
+    return false;
+  // Either the bytes spanned by this location are
+  // strictly less than the other offset, or vice versa
+  return *offset + Size1 <= *other.offset || *other.offset + Size2 <= *offset;
+}
+
 bool Location::singleton(const Location &other) const {
   return offset.has_value();
 }
@@ -136,6 +148,15 @@ bool LatticeElement::disjoint(const LatticeElement &Other) const {
   assert(level != Level::Top && Other.level != Level::Top && "Top encountered");
   // Return whether the abstract locations are disjoint
   return loc.disjoint(Other.loc);
+}
+
+bool LatticeElement::disjoint(const LatticeElement &Other, unsigned Size1, unsigned Size2) const {
+  if (level == Level::Bot || Other.level == Level::Bot)
+    // Either this or other may alias anything
+    return false;
+  assert(level != Level::Top && Other.level != Level::Top && "Top encountered");
+  // Return whether the abstract locations are disjoint
+  return loc.disjoint(Other.loc, Size1, Size2);
 }
 
 raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
@@ -308,13 +329,18 @@ bool BPFAlias::conflict(const MachineInstr &MI1, const MachineInstr &MI2) const 
   if (!isMemInst(MI1) || !isMemInst(MI2))
     // One instruction not a load or store
     return false;
+
   if (!isStoreInst(MI1) && !isStoreInst(MI2))
     // Both are loads
     return false;
+
   auto LE1 = getInfo(MI1);
+  unsigned Size1 = memorySize(MI1);
+
   auto LE2 = getInfo(MI2);
+  unsigned Size2 = memorySize(MI2);
   // Abstract locations represented overlap
-  return !LE1.disjoint(LE2);
+  return !LE1.disjoint(LE2, Size1, Size2);
 }
 
 LatticeElement BPFAlias::getInfo(const llvm::MachineInstr &MI) const {
