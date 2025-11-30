@@ -35,6 +35,12 @@ int toy_example(struct xdp_md *ctx)
     if (data + nh_off > data_end) {
         return XDP_DROP;
     }
+
+    volatile __u8 X[128];
+    X[0] = 1;
+    X[1] = 2;
+    X[2] = 3;
+    X[3] = 4;
     
     proto = eth->h_proto;
     if (proto == BE_ETH_P_IP) {
