@@ -57,6 +57,9 @@ static cl::opt<bool>
 static cl::opt<bool>
     EnableAlias("bpf-enable-alias", cl::Hidden, cl::desc("Enable Alias analysis"));
 
+static cl::opt<bool>
+    EnableSLP("bpf-enable-slp", cl::desc("Enable Superword-Level Merging"));
+
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   // Register the target.
   RegisterTargetMachine<BPFTargetMachine> X(getTheBPFleTarget());
@@ -189,8 +192,6 @@ void BPFPassConfig::addPostRegAlloc() {
     addPass(createBPFConstPropPass());
   if (EnableDCE)
     addPass(createBPFDCEPass());
-  if (EnableAlias)
-    addPass(createBPFAliasPass());
 }
 
 TargetTransformInfo
@@ -225,6 +226,10 @@ void BPFPassConfig::addPreEmitPass() {
   if (getOptLevel() != CodeGenOptLevel::None)
     if (!DisableMIPeephole)
       addPass(createBPFMIPreEmitPeepholePass());
+  if (EnableAlias)
+    addPass(createBPFAliasPass());
+  if (EnableSLP)
+    addPass(createBPFSLPPass());
   if (EnableInstrumentation)
     addPass(createBPFInstrumentFinalPass());
 }

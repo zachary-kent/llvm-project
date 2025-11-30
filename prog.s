@@ -15,41 +15,36 @@ toy_example:                            # @toy_example
 	.cfi_sections .debug_frame
 	.cfi_startproc
 # %bb.0:                                # %entry
-	w2 = 9
-	r3 = dyn_inst_cnt ll
-	lock *(u32 *)(r3 + 0) += w2
-.Ltmp0:
-.Ltmp1:
 	#DEBUG_VALUE: toy_example:ctx <- $r1
 	#DEBUG_VALUE: toy_example:key <- [DW_OP_deref] $r10
 	w0 = 1
-.Ltmp2:
+.Ltmp0:
 	.loc	0 25 41 prologue_end            # prog.c:25:41
+.Ltmp1:
+.Ltmp2:
+	w2 = *(u32 *)(r1 + 4)
 .Ltmp3:
 .Ltmp4:
-	w2 = *(u32 *)(r1 + 4)
-.Ltmp5:
-.Ltmp6:
 	#DEBUG_VALUE: toy_example:data_end <- $r2
 	.loc	0 26 37                         # prog.c:26:37
-.Ltmp7:
+.Ltmp5:
 	w1 = *(u32 *)(r1 + 0)
-.Ltmp8:
-.Ltmp9:
+.Ltmp6:
+.Ltmp7:
 	#DEBUG_VALUE: toy_example:key <- 0
 	#DEBUG_VALUE: toy_example:data <- $r1
 	#DEBUG_VALUE: toy_example:eth <- $r1
 	#DEBUG_VALUE: toy_example:lookup_res <- 0
 	#DEBUG_VALUE: toy_example:nh_off <- 14
 	.loc	0 33 14                         # prog.c:33:14
-.Ltmp10:
+.Ltmp8:
 	r3 = r1
 	r3 += 14
 	.loc	0 33 23 is_stmt 0               # prog.c:33:23
+.Ltmp9:
+	if r3 > r2 goto LBB0_5
+.Ltmp10:
 .Ltmp11:
-	if r3 > r2 goto LBB0_7
-.Ltmp12:
-.Ltmp13:
 # %bb.1:                                # %if.end
 	#DEBUG_VALUE: toy_example:nh_off <- 14
 	#DEBUG_VALUE: toy_example:lookup_res <- 0
@@ -57,26 +52,22 @@ toy_example:                            # @toy_example
 	#DEBUG_VALUE: toy_example:data <- $r1
 	#DEBUG_VALUE: toy_example:key <- 0
 	#DEBUG_VALUE: toy_example:data_end <- $r2
-	.loc	0 0 23                          # prog.c:0:23
-	w2 = 8
-.Ltmp14:
-.Ltmp15:
-	r3 = dyn_inst_cnt ll
-	lock *(u32 *)(r3 + 0) += w2
 	.loc	0 37 18 is_stmt 1               # prog.c:37:18
-.Ltmp16:
+.Ltmp12:
 	w3 = *(u8 *)(r1 + 12)
 	w2 = *(u8 *)(r1 + 13)
+.Ltmp13:
+.Ltmp14:
 	w2 <<= 8
 	w2 |= w3
-.Ltmp17:
-.Ltmp18:
+.Ltmp15:
+.Ltmp16:
 	#DEBUG_VALUE: toy_example:proto <- [DW_OP_LLVM_convert 16 7, DW_OP_LLVM_convert 32 7, DW_OP_stack_value] $w2
 	.loc	0 38 15                         # prog.c:38:15
+.Ltmp17:
+	if w2 == 56710 goto LBB0_5
+.Ltmp18:
 .Ltmp19:
-	if w2 == 56710 goto LBB0_7
-.Ltmp20:
-.Ltmp21:
 # %bb.2:                                # %if.end
 	#DEBUG_VALUE: toy_example:proto <- [DW_OP_LLVM_convert 16 7, DW_OP_LLVM_convert 32 7, DW_OP_stack_value] $w2
 	#DEBUG_VALUE: toy_example:nh_off <- 14
@@ -84,14 +75,10 @@ toy_example:                            # @toy_example
 	#DEBUG_VALUE: toy_example:eth <- $r1
 	#DEBUG_VALUE: toy_example:data <- $r1
 	#DEBUG_VALUE: toy_example:key <- 0
-	.loc	0 0 15 is_stmt 0                # prog.c:0:15
-	w3 = 4
-	r4 = dyn_inst_cnt ll
-	lock *(u32 *)(r4 + 0) += w3
-	.loc	0 38 15 is_stmt 1               # prog.c:38:15
-	if w2 != 8 goto LBB0_6
-.Ltmp22:
-.Ltmp23:
+	.loc	0 38 15                         # prog.c:38:15
+	if w2 != 8 goto LBB0_4
+.Ltmp20:
+.Ltmp21:
 # %bb.3:                                # %if.then8
 	#DEBUG_VALUE: toy_example:proto <- [DW_OP_LLVM_convert 16 7, DW_OP_LLVM_convert 32 7, DW_OP_stack_value] $w2
 	#DEBUG_VALUE: toy_example:nh_off <- 14
@@ -99,17 +86,11 @@ toy_example:                            # @toy_example
 	#DEBUG_VALUE: toy_example:eth <- $r1
 	#DEBUG_VALUE: toy_example:data <- $r1
 	#DEBUG_VALUE: toy_example:key <- 0
-	.loc	0 0 15 is_stmt 0                # prog.c:0:15
-	w2 = 26
-.Ltmp24:
-.Ltmp25:
-	r3 = dyn_inst_cnt ll
-	lock *(u32 *)(r3 + 0) += w2
-.Ltmp26:
-	.loc	0 39 9 is_stmt 1                # prog.c:39:9
-.Ltmp27:
-.Ltmp28:
+	.loc	0 39 9                          # prog.c:39:9
+.Ltmp22:
 	w2 = *(u8 *)(r1 + 11)
+.Ltmp23:
+.Ltmp24:
 	w2 <<= 8
 	w3 = *(u8 *)(r1 + 10)
 	w2 |= w3
@@ -121,83 +102,47 @@ toy_example:                            # @toy_example
 	w3 = *(u8 *)(r1 + 8)
 	w3 <<= 16
 	w1 = *(u8 *)(r1 + 9)
-.Ltmp29:
-.Ltmp30:
+.Ltmp25:
+.Ltmp26:
 	w1 <<= 24
 	w1 |= w3
 	w1 |= w2
 	*(u32 *)(r10 - 8) = w1
-.Ltmp31:
-.Ltmp32:
+.Ltmp27:
+.Ltmp28:
 	#DEBUG_VALUE: toy_example:key <- [DW_OP_deref] $r10
 	.loc	0 0 9 is_stmt 0                 # prog.c:0:9
 	r2 = r10
 	r2 += -8
 	.loc	0 40 22 is_stmt 1               # prog.c:40:22
-.Ltmp33:
+.Ltmp29:
 	r1 = map ll
 	call 1
-.Ltmp34:
+.Ltmp30:
 	.loc	0 40 22                         # prog.c:40:22
 	r1 = r0
-.Ltmp35:
-.Ltmp36:
+.Ltmp31:
+.Ltmp32:
 	#DEBUG_VALUE: toy_example:lookup_res <- $r1
 	.loc	0 0 22 is_stmt 0                # prog.c:0:22
 	w0 = 1
+.Ltmp33:
+.Ltmp34:
+	if r1 == 0 goto LBB0_5
+.Ltmp35:
+.Ltmp36:
+LBB0_4:                                 # %if.else15
+	#DEBUG_VALUE: toy_example:nh_off <- 14
+	w0 = 2
 .Ltmp37:
 .Ltmp38:
-	if r1 == 0 goto LBB0_5
-.Ltmp39:
-.Ltmp40:
-# %bb.4:                                # %if.then8
-	#DEBUG_VALUE: toy_example:lookup_res <- $r1
+LBB0_5:                                 # %cleanup
 	#DEBUG_VALUE: toy_example:nh_off <- 14
-	#DEBUG_VALUE: toy_example:key <- [DW_OP_deref] $r10
-	w1 = 4
-.Ltmp41:
-.Ltmp42:
-	r2 = dyn_inst_cnt ll
-	lock *(u32 *)(r2 + 0) += w1
-	w0 = 2
-.Ltmp43:
-.Ltmp44:
-LBB0_5:                                 # %if.then8
-	#DEBUG_VALUE: toy_example:nh_off <- 14
-	#DEBUG_VALUE: toy_example:key <- [DW_OP_deref] $r10
-	w1 = 4
-	r2 = dyn_inst_cnt ll
-	lock *(u32 *)(r2 + 0) += w1
-	goto LBB0_7
-.Ltmp45:
-.Ltmp46:
-LBB0_6:                                 # %if.else15
-	#DEBUG_VALUE: toy_example:proto <- [DW_OP_LLVM_convert 16 7, DW_OP_LLVM_convert 32 7, DW_OP_stack_value] $w2
-	#DEBUG_VALUE: toy_example:nh_off <- 14
-	#DEBUG_VALUE: toy_example:lookup_res <- 0
-	#DEBUG_VALUE: toy_example:eth <- $r1
-	#DEBUG_VALUE: toy_example:data <- $r1
-	#DEBUG_VALUE: toy_example:key <- 0
-	w1 = 4
-.Ltmp47:
-.Ltmp48:
-	r2 = dyn_inst_cnt ll
-.Ltmp49:
-.Ltmp50:
-	lock *(u32 *)(r2 + 0) += w1
-	w0 = 2
-.Ltmp51:
-.Ltmp52:
-LBB0_7:                                 # %cleanup
-	#DEBUG_VALUE: toy_example:nh_off <- 14
-	w1 = 4
-	r2 = dyn_inst_cnt ll
-	lock *(u32 *)(r2 + 0) += w1
 	.loc	0 53 1 is_stmt 1                # prog.c:53:1
-.Ltmp53:
+.Ltmp39:
 	exit
-.Ltmp54:
-.Ltmp55:
+.Ltmp40:
+.Ltmp41:
 .Lfunc_end0:
 	.size	toy_example, .Lfunc_end0-toy_example
 	.size	.Ltoy_example$local, .Lfunc_end0-toy_example
@@ -253,90 +198,68 @@ dyn_inst_cnt:
 	.long	.Ldebug_loc7-.Lloclists_table_base0
 .Ldebug_loc0:
 	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp0-.Lfunc_begin0           #   starting offset
-	.uleb128 .Ltmp8-.Lfunc_begin0           #   ending offset
+	.uleb128 .Lfunc_begin0-.Lfunc_begin0    #   starting offset
+	.uleb128 .Ltmp6-.Lfunc_begin0           #   ending offset
 	.byte	1                               # Loc expr size
 	.byte	81                              # DW_OP_reg1
 	.byte	0                               # DW_LLE_end_of_list
 .Ldebug_loc1:
 	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp0-.Lfunc_begin0           #   starting offset
-	.uleb128 .Ltmp8-.Lfunc_begin0           #   ending offset
+	.uleb128 .Lfunc_begin0-.Lfunc_begin0    #   starting offset
+	.uleb128 .Ltmp6-.Lfunc_begin0           #   ending offset
 	.byte	2                               # Loc expr size
 	.byte	122                             # DW_OP_breg10
 	.byte	0                               # 0
 	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp8-.Lfunc_begin0           #   starting offset
+	.uleb128 .Ltmp6-.Lfunc_begin0           #   starting offset
+	.uleb128 .Ltmp27-.Lfunc_begin0          #   ending offset
+	.byte	2                               # Loc expr size
+	.byte	48                              # DW_OP_lit0
+	.byte	159                             # DW_OP_stack_value
+	.byte	4                               # DW_LLE_offset_pair
+	.uleb128 .Ltmp27-.Lfunc_begin0          #   starting offset
+	.uleb128 .Ltmp35-.Lfunc_begin0          #   ending offset
+	.byte	2                               # Loc expr size
+	.byte	122                             # DW_OP_breg10
+	.byte	0                               # 0
+	.byte	0                               # DW_LLE_end_of_list
+.Ldebug_loc2:
+	.byte	4                               # DW_LLE_offset_pair
+	.uleb128 .Ltmp3-.Lfunc_begin0           #   starting offset
+	.uleb128 .Ltmp13-.Lfunc_begin0          #   ending offset
+	.byte	1                               # Loc expr size
+	.byte	82                              # DW_OP_reg2
+	.byte	0                               # DW_LLE_end_of_list
+.Ldebug_loc3:
+	.byte	4                               # DW_LLE_offset_pair
+	.uleb128 .Ltmp6-.Lfunc_begin0           #   starting offset
+	.uleb128 .Ltmp25-.Lfunc_begin0          #   ending offset
+	.byte	1                               # Loc expr size
+	.byte	81                              # DW_OP_reg1
+	.byte	0                               # DW_LLE_end_of_list
+.Ldebug_loc4:
+	.byte	4                               # DW_LLE_offset_pair
+	.uleb128 .Ltmp6-.Lfunc_begin0           #   starting offset
+	.uleb128 .Ltmp25-.Lfunc_begin0          #   ending offset
+	.byte	1                               # Loc expr size
+	.byte	81                              # DW_OP_reg1
+	.byte	0                               # DW_LLE_end_of_list
+.Ldebug_loc5:
+	.byte	4                               # DW_LLE_offset_pair
+	.uleb128 .Ltmp6-.Lfunc_begin0           #   starting offset
 	.uleb128 .Ltmp31-.Lfunc_begin0          #   ending offset
 	.byte	2                               # Loc expr size
 	.byte	48                              # DW_OP_lit0
 	.byte	159                             # DW_OP_stack_value
 	.byte	4                               # DW_LLE_offset_pair
 	.uleb128 .Ltmp31-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp45-.Lfunc_begin0          #   ending offset
-	.byte	2                               # Loc expr size
-	.byte	122                             # DW_OP_breg10
-	.byte	0                               # 0
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp45-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp51-.Lfunc_begin0          #   ending offset
-	.byte	2                               # Loc expr size
-	.byte	48                              # DW_OP_lit0
-	.byte	159                             # DW_OP_stack_value
-	.byte	0                               # DW_LLE_end_of_list
-.Ldebug_loc2:
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp5-.Lfunc_begin0           #   starting offset
-	.uleb128 .Ltmp14-.Lfunc_begin0          #   ending offset
-	.byte	1                               # Loc expr size
-	.byte	82                              # DW_OP_reg2
-	.byte	0                               # DW_LLE_end_of_list
-.Ldebug_loc3:
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp8-.Lfunc_begin0           #   starting offset
-	.uleb128 .Ltmp29-.Lfunc_begin0          #   ending offset
-	.byte	1                               # Loc expr size
-	.byte	81                              # DW_OP_reg1
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp45-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp47-.Lfunc_begin0          #   ending offset
-	.byte	1                               # Loc expr size
-	.byte	81                              # DW_OP_reg1
-	.byte	0                               # DW_LLE_end_of_list
-.Ldebug_loc4:
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp8-.Lfunc_begin0           #   starting offset
-	.uleb128 .Ltmp29-.Lfunc_begin0          #   ending offset
-	.byte	1                               # Loc expr size
-	.byte	81                              # DW_OP_reg1
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp45-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp47-.Lfunc_begin0          #   ending offset
-	.byte	1                               # Loc expr size
-	.byte	81                              # DW_OP_reg1
-	.byte	0                               # DW_LLE_end_of_list
-.Ldebug_loc5:
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp8-.Lfunc_begin0           #   starting offset
 	.uleb128 .Ltmp35-.Lfunc_begin0          #   ending offset
-	.byte	2                               # Loc expr size
-	.byte	48                              # DW_OP_lit0
-	.byte	159                             # DW_OP_stack_value
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp35-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp41-.Lfunc_begin0          #   ending offset
 	.byte	1                               # Loc expr size
 	.byte	81                              # DW_OP_reg1
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp45-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp51-.Lfunc_begin0          #   ending offset
-	.byte	2                               # Loc expr size
-	.byte	48                              # DW_OP_lit0
-	.byte	159                             # DW_OP_stack_value
 	.byte	0                               # DW_LLE_end_of_list
 .Ldebug_loc6:
 	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp8-.Lfunc_begin0           #   starting offset
+	.uleb128 .Ltmp6-.Lfunc_begin0           #   starting offset
 	.uleb128 .Lfunc_end0-.Lfunc_begin0      #   ending offset
 	.byte	2                               # Loc expr size
 	.byte	62                              # DW_OP_lit14
@@ -344,19 +267,8 @@ dyn_inst_cnt:
 	.byte	0                               # DW_LLE_end_of_list
 .Ldebug_loc7:
 	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp17-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp24-.Lfunc_begin0          #   ending offset
-	.byte	13                              # Loc expr size
-	.byte	114                             # DW_OP_breg2
-	.byte	0                               # 0
-	.byte	168                             # DW_OP_convert
-	.asciz	"\247\200\200"                  # 
-	.byte	168                             # DW_OP_convert
-	.asciz	"\253\200\200"                  # 
-	.byte	159                             # DW_OP_stack_value
-	.byte	4                               # DW_LLE_offset_pair
-	.uleb128 .Ltmp45-.Lfunc_begin0          #   starting offset
-	.uleb128 .Ltmp49-.Lfunc_begin0          #   ending offset
+	.uleb128 .Ltmp15-.Lfunc_begin0          #   starting offset
+	.uleb128 .Ltmp23-.Lfunc_begin0          #   ending offset
 	.byte	13                              # Loc expr size
 	.byte	114                             # DW_OP_breg2
 	.byte	0                               # 0
@@ -1298,39 +1210,39 @@ dyn_inst_cnt:
 	.long	106
 	.long	0
 	.long	23552                           # Line 23 Col 0
-	.long	.Ltmp4
+	.long	.Ltmp2
 	.long	106
 	.long	0
 	.long	25641                           # Line 25 Col 41
-	.long	.Ltmp7
+	.long	.Ltmp5
 	.long	106
 	.long	0
 	.long	26661                           # Line 26 Col 37
-	.long	.Ltmp10
+	.long	.Ltmp8
 	.long	106
 	.long	0
 	.long	33806                           # Line 33 Col 14
-	.long	.Ltmp11
+	.long	.Ltmp9
 	.long	106
 	.long	0
 	.long	33815                           # Line 33 Col 23
-	.long	.Ltmp16
+	.long	.Ltmp12
 	.long	106
 	.long	0
 	.long	37906                           # Line 37 Col 18
-	.long	.Ltmp19
+	.long	.Ltmp17
 	.long	106
 	.long	0
 	.long	38927                           # Line 38 Col 15
-	.long	.Ltmp28
+	.long	.Ltmp22
 	.long	106
 	.long	0
 	.long	39945                           # Line 39 Col 9
-	.long	.Ltmp33
+	.long	.Ltmp29
 	.long	106
 	.long	0
 	.long	40982                           # Line 40 Col 22
-	.long	.Ltmp53
+	.long	.Ltmp39
 	.long	106
 	.long	0
 	.long	54273                           # Line 53 Col 1

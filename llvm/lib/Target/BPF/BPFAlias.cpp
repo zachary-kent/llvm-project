@@ -6,6 +6,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Pass.h"
 #include "Dataflow.h"
+#include "BPFAlias.hpp"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SetVector.h"
 
@@ -18,168 +19,143 @@ using namespace llvm;
 
 #define BPF_ALIAS_PASS_NAME "BPF ALIAS"
 
-namespace {
-
 template<typename T>
 std::optional<T> meet(const std::optional<T> &l, const std::optional<T> &r) {
   return l && r && *l == *r ? l : std::nullopt;
 }
 
-struct Location {
-  enum class Region {
-    Packet,
-    Stack,
-    Context,
-    Global
-  };
-  Region region;
-  std::optional<int64_t> offset;
-  Location() : region(Region::Stack), offset(0) {}
-  Location(Region region) : region(region) {}
-  Location(Region region, int64_t offset) : region(region), offset(offset) {}
-  bool disjoint(const Location &other) const {
-    return region != other.region || (offset && other.offset && *offset != *other.offset);
+Location::Location() : region(Region::Stack), offset(0) {}
+Location::Location(Region region) : region(region) {}
+Location::Location(Region region, int64_t offset) : region(region), offset(offset) {}
+
+bool Location::disjoint(const Location &other) const {
+  return region != other.region || (offset && other.offset && *offset != *other.offset);
+}
+
+bool Location::singleton(const Location &other) const {
+  return offset.has_value();
+}
+
+bool Location::operator==(const Location &other) const {
+  return region == other.region && offset == other.offset;
+}
+
+bool Location::operator!=(const Location &other) const {
+  return !(*this == other);
+}
+
+std::optional<Location> Location::meet(const Location &other) const {
+  if (region != other.region) return std::nullopt;
+  Location glb = *this;
+  if (offset != other.offset) {
+    glb.offset.reset();
   }
-  bool singleton(const Location &other) const {
-    return offset.has_value();
+  return glb;
+}
+
+void Location::add(int64_t offset) {
+  if (this->offset) {
+    *this->offset += offset;
   }
-  bool operator==(const Location &other) const {
-    return region == other.region && offset == other.offset;
-  }
-  bool operator!=(const Location &other) const {
-    return !(*this == other);
-  }
-  std::optional<Location> meet(const Location &other) const {
-    if (region != other.region) return std::nullopt;
-    Location glb = *this;
-    if (offset != other.offset) {
-      glb.offset.reset();
+}
+
+raw_ostream &operator<<(raw_ostream &OS, const Location &L) {
+  switch (L.region) {
+    case Location::Region::Context: {
+      OS << "Context ";
+      break;
     }
-    return glb;
-  }
-  void add(int64_t offset) {
-    if (this->offset) {
-      *this->offset += offset;
+    case Location::Region::Global: {
+      OS << "Global ";
+      break;
     }
-  }
-  friend raw_ostream &operator<<(raw_ostream &OS, const Location &L) {
-    switch (L.region) {
-      case Location::Region::Context: {
-        OS << "Context ";
-        break;
-      }
-      case Location::Region::Global: {
-        OS << "Global ";
-        break;
-      }
-      case Location::Region::Packet: {
-        OS << "Packet ";
-        break;
-      }
-      case Location::Region::Stack: {
-        OS << "Stack ";
-        break;
-      }
+    case Location::Region::Packet: {
+      OS << "Packet ";
+      break;
     }
-    OS << L.offset;
-  }
-};
-
-struct LatticeElement {
-  //       T
-  //      / \
-  //     DP DNP
-  //      \ /
-  //      
-  enum class Level {
-    Top, // Not a pointer
-    Pointer, // Pointer residing in one region
-    Bot // May alias any pointer
-  };
-  Level level;
-  Location loc;
-  LatticeElement() : level(Level::Top) {}
-
-  LatticeElement(Location loc) : level(Level::Pointer), loc(std::move(loc)) {}
-
-  Location &getPointer() {
-    assert(level == Level::Pointer && "Is not pointer");
-    return loc;
-  }
-
-  bool operator==(const LatticeElement &other) const {
-    if (level != other.level)
-      return false;
-    switch (level) {
-      case Level::Top:
-      case Level::Bot: {
-        return true;
-      }
-      case Level::Pointer: {
-        return loc == other.loc;
-      }
+    case Location::Region::Stack: {
+      OS << "Stack ";
+      break;
     }
   }
+  OS << L.offset;
+  return OS;
+}
 
-  void meet(const LatticeElement &other) {
-    if (level == Level::Bot || other.level == Level::Top)
-      return;
-    if (level == Level::Top || other.level == Level::Bot) {
-      *this = other;
-      return;
-    }
-    auto glb = loc.meet(other.loc);
-    if (glb) {
-      // greatest lower bound of pointers exist
-      // i.e. both point to the same memory region
-      loc = std::move(*glb);
-    } else {
-      // pointers point to different regions
-      level = Level::Bot;
-    }
-  }
+LatticeElement::LatticeElement() : level(Level::Top) {}
 
-  void addOffset(int64_t offset) {
-    if (level == Level::Pointer) {
-      loc.add(offset);
-    }
-  }
+LatticeElement::LatticeElement(Location loc) : level(Level::Pointer), loc(std::move(loc)) {}
 
-  friend raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
-    switch (LE.level) {
-      case LatticeElement::Level::Top: {
-        OS << "Undef";
-        break;
-      }
-      case LatticeElement::Level::Bot: {
-        OS << "Unknown";
-        break;
-      }
-      case LatticeElement::Level::Pointer: {
-        OS << "Pointer [" << LE.loc << ']';
-      }
+Location &LatticeElement::getPointer() {
+  assert(level == Level::Pointer && "Is not pointer");
+  return loc;
+}
+
+bool LatticeElement::operator==(const LatticeElement &other) const {
+  if (level != other.level)
+    return false;
+  switch (level) {
+    case Level::Top:
+    case Level::Bot: {
+      return true;
+    }
+    case Level::Pointer: {
+      return loc == other.loc;
     }
   }
-};
+}
 
-class BPFAlias : public MachineFunctionPass {
-public:
-  static char ID;
-
-  BPFAlias() : MachineFunctionPass(ID) {
-    initializeBPFDCEPass(*PassRegistry::getPassRegistry());
+void LatticeElement::meet(const LatticeElement &other) {
+  if (level == Level::Bot || other.level == Level::Top)
+    return;
+  if (level == Level::Top || other.level == Level::Bot) {
+    *this = other;
+    return;
   }
-
-  bool runOnMachineFunction(MachineFunction &MF) override;
-
-  StringRef getPassName() const override {
-    return BPF_ALIAS_PASS_NAME;
+  auto glb = loc.meet(other.loc);
+  if (glb) {
+    // greatest lower bound of pointers exist
+    // i.e. both point to the same memory region
+    loc = std::move(*glb);
+  } else {
+    // pointers point to different regions
+    level = Level::Bot;
   }
-};
+}
+
+void LatticeElement::addOffset(int64_t offset) {
+  if (level == Level::Pointer) {
+    loc.add(offset);
+  }
+}
+
+raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
+  switch (LE.level) {
+    case LatticeElement::Level::Top: {
+      OS << "Undef";
+      break;
+    }
+    case LatticeElement::Level::Bot: {
+      OS << "Unknown";
+      break;
+    }
+    case LatticeElement::Level::Pointer: {
+      OS << "Pointer [" << LE.loc << ']';
+      break;
+    }
+  }
+  return OS;
+}
 
 char BPFAlias::ID = 0;
 
-constexpr size_t NUM_BPF_REGS = 12;
+StringRef BPFAlias::getPassName() const {
+  return BPF_ALIAS_PASS_NAME;
+}
+
+BPFAlias::BPFAlias() : MachineFunctionPass(ID) {
+  initializeBPFDCEPass(*PassRegistry::getPassRegistry());
+}
 
 MCRegister subRegToReg(MCRegister MCR) {
   switch (MCR) {
@@ -207,14 +183,10 @@ MCRegister subRegToReg(MCRegister MCR) {
       return BPF::R10;
     case BPF::W11:
       return BPF::R11;
-    default: {
-      errs() << "Unknown register\n";
-      std::abort();
-    }
+    default:
+      return MCR;
   }
 }
-
-using PointerInfo = std::array<LatticeElement, NUM_BPF_REGS>;
 
 constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
   BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, 
@@ -227,7 +199,7 @@ template<typename T>
 void print_array(const std::array<T, NUM_BPF_REGS> &arr) {
   outs() << '[';
   for (size_t i = 0; i < NUM_BPF_REGS; i++) {
-    outs() << 'R' << i << " = " << arr[i];
+    outs() << 'R' << i << " = " << arr.at(i);
     if (i < NUM_BPF_REGS - 1) {
       outs() << ", ";
     }
@@ -236,8 +208,6 @@ void print_array(const std::array<T, NUM_BPF_REGS> &arr) {
 }
 
 bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
-  outs() << "Hello from const prop\n";
-
   const auto &TSI = MF.getSubtarget();
   const auto *TRI = TSI.getRegisterInfo();
 
@@ -245,9 +215,6 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
   PointerInfo boundary;
   boundary[TRI->getEncodingValue(BPF::R1)] = Location(Location::Region::Context, 0);
   boundary[TRI->getEncodingValue(BPF::R10)] = Location(Location::Region::Stack, 0);
-
-  // Dataflow values at entry of every instruction
-  DenseMap<MachineInstr*, PointerInfo> PointerIn;
 
   Parameters<PointerInfo, MachineBasicBlock> Params = {
     .direction = Direction::Forward,
@@ -260,6 +227,9 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
       }
     },
     .transfer = [&](MachineBasicBlock &MBB, PointerInfo &In) {
+      auto getInfo = [&](MCRegister MCR) -> LatticeElement& {
+        return In[TRI->getEncodingValue(subRegToReg(MCR))];
+      };
       for (auto &MI : MBB) {
         PointerIn[&MI] = In;
         // Bottom out all definitions at first
@@ -267,19 +237,42 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
           case BPF::MOV_rr:
           case BPF::MOV_rr_32: {
             // Treat as copy
-            auto Dst = subRegToReg(MI.getOperand(0).getReg());
-            auto Src = subRegToReg(MI.getOperand(1).getReg());
-            In[Dst] = In[Src];
+            assert(MI.getOperand(0).isReg() && "Dest not reg");
+            assert(MI.getOperand(1).isReg() && "Src not reg");
+            auto Dst = MI.getOperand(0).getReg();
+            auto Src = MI.getOperand(1).getReg();
+            getInfo(Dst) = getInfo(Src);
+            break;
+          }
+          case BPF::LDW32: {
+            assert(MI.getOperand(0).isReg() && "Dest not reg");
+            assert(MI.getOperand(1).isReg() && "Base not reg");
+            assert(MI.getOperand(2).isImm() && "Offset not immediate");
+            auto Dest = MI.getOperand(0).getReg();
+            auto Base = MI.getOperand(1).getReg();
+            auto Off = MI.getOperand(2).getImm();
+            const auto &BaseInfo = getInfo(Base);
+            if (BaseInfo.level == LatticeElement::Level::Pointer 
+                && BaseInfo.loc.region == Location::Region::Context
+                && (BaseInfo.loc.offset == -Off || BaseInfo.loc.offset == 4 - Off)) {
+              getInfo(Dest) = Location(Location::Region::Packet);
+            } else {
+              getInfo(Dest).level = LatticeElement::Level::Bot;
+            }
+            break;
           }
           case BPF::ADD_ri:
           case BPF::ADD_ri_32: {
-            MCRegister Dst = subRegToReg(MI.getOperand(0).getReg());
+            assert(MI.getOperand(0).isReg() && "Dest not reg");
+            MCRegister Dst = MI.getOperand(0).getReg();
             int64_t Off = MI.getOperand(2).getImm();
-            In[Dst].addOffset(Off);
+            getInfo(Dst).addOffset(Off);
+            break;
           }
           default: {
             for (const auto &Def : MI.defs()) {
-              In[TRI->getEncodingValue(subRegToReg(Def.getReg()))].level = LatticeElement::Level::Bot;
+              assert(Def.isReg() && "Dest not reg");
+              getInfo(Def.getReg()).level = LatticeElement::Level::Bot;
             }
             if (MI.isCall()) {
               for (const auto &MO : MI.operands()) {
@@ -292,9 +285,9 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
                 }
               }
               if (MI.getOperand(0).getImm() == BPF_MAP_LOOKUP_INDEX) {
-                In[TRI->getEncodingValue(BPF::R0)] = Location(Location::Region::Global);
+                getInfo(BPF::R0) = Location(Location::Region::Global);
               } else {
-                In[TRI->getEncodingValue(BPF::R0)].level = LatticeElement::Level::Bot;
+                getInfo(BPF::R0).level = LatticeElement::Level::Bot;
               }
             }
           }
@@ -303,14 +296,19 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
     }
   };
 
-  for (auto &MBB : MF) {
-    for (auto &MI : MBB) {
-      print_array(PointerIn[&MI]);
-    }
-  }
-}
+  compute(Params, MF);
 
-} // end of anonymous namespace
+  // for (auto &MBB : MF) {
+  //   for (auto &MI : MBB) {
+  //     if (!MI.isMetaInstruction() && !MI.isDebugOrPseudoInstr()) {
+  //       outs() << MI;
+  //       print_array(PointerIn[&MI]);
+  //     }
+  //   }
+  // }
+
+  return false;
+}
 
 INITIALIZE_PASS(BPFAlias, "bpf-alias",
                 BPF_ALIAS_PASS_NAME,
