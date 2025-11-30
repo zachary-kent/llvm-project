@@ -7,6 +7,7 @@
 #include "BPFAlias.hpp"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/MC/MCRegister.h"
 #include "llvm/Pass.h"
 #include "Dataflow.h"
@@ -15,6 +16,8 @@
 #include "llvm/ADT/DenseMap.h"
 
 #include <array>
+#include <algorithm>
+#include <ranges>
 
 using namespace llvm;
 
@@ -81,14 +84,53 @@ void BPFSLP::dumpBasicBlock(const MachineBasicBlock &MBB) const {
   }
 }
 
+unsigned StoreImmOpcode(unsigned Size) {
+  switch (Size) {
+    case 1:
+      return BPF::STB_imm;
+    case 2:
+      return BPF::STH_imm;
+    case 4:
+      return BPF::STW_imm;
+    case 8:
+      return BPF::STD_imm;
+    default: {
+      errs() << "Invalid memory operand size: " << Size << '\n';
+      std::abort();
+    }
+  }
+}
+
+using Pack = SmallVector<MachineInstr *>;
+
+MachineInstr *createPackedInstr(MachineBasicBlock &MBB, const Pack &pack) {
+  assert(!pack.empty() && "Got empty pack");
+  auto *First = pack.front();
+  unsigned Size = memorySize(*First);
+  unsigned PackedSize = pack.size() * Size;
+  assert(PackedSize <= 8 && "Pack too large");
+  auto *TII = MBB.getParent()->getSubtarget().getInstrInfo();
+  auto PackedOpcode = StoreImmOpcode(PackedSize);
+  int64_t PackedImm = 0;
+  for (auto Itr = pack.rbegin(); Itr != pack.rend(); Itr++) {
+    PackedImm <<= Size * 8;
+    PackedImm |= (*Itr)->getOperand(2).getImm();
+  }
+  DebugLoc DL;
+  return BuildMI(MBB, MBB.end(), DL, TII->get(PackedOpcode))
+    .addImm(PackedImm)
+    .addReg(First->getOperand(1).getReg().asMCReg())
+    .addImm(First->getOperand(2).getImm());
+}
+
 bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
-  MF.dump();
   auto &AliasInfo = getAnalysis<BPFAlias>();
 
   const auto &TSI = MF.getSubtarget();
   const auto *TRI = TSI.getRegisterInfo();
 
   for (auto &MBB : MF) {
+    MBB.dump();
     for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
       auto &MI1 = *OuterItr;
       for (auto InnerItr = std::next(OuterItr); InnerItr != MBB.end(); InnerItr++) {
@@ -119,42 +161,135 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
           dependencies[&MI2].insert(&MI1);
         }
       }
-      for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
-        // Iterate over all instructions before this instruction
-        auto &MI2 = *InnerItr;
-        for (auto &Use : OuterItr->all_uses()) {
-          if (Use.isReg()) {
-            auto UseReg = Use.getReg().asMCReg();
-            if (InnerItr->definesRegister(UseReg, TRI)) {
-              // Earlier instruction defines a register used by a later one
-              dependents[&MI2].insert(&MI1);
-              dependencies[&MI1].insert(&MI2);
+      if (OuterItr->isTerminator()) {
+        // Terminator depends on all previous instructions
+        for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
+          // Iterate over all instructions before this instruction
+          auto &MI2 = *InnerItr;
+          dependents[&MI2].insert(&MI1);
+          dependencies[&MI1].insert(&MI2);
+        }
+      } else {
+        for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
+          // Iterate over all instructions before this instruction
+          auto &MI2 = *InnerItr;
+          for (auto &Use : OuterItr->all_uses()) {
+            if (Use.isReg()) {
+              auto UseReg = Use.getReg().asMCReg();
+              if (InnerItr->definesRegister(UseReg, TRI)) {
+                // Earlier instruction defines a register used by a later one
+                dependents[&MI2].insert(&MI1);
+                dependencies[&MI1].insert(&MI2);
+              }
             }
           }
         }
       }
     }
-  }
-  for (auto &MBB : MF) {
+    using Pack = SmallVector<MachineInstr *>;
+    DenseMap<MachineInstr*, Pack> packs;
     for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
       auto &MI1 = *OuterItr;
+      auto [Itr, Succeed] = packs.try_emplace(&MI1, SmallVector{&MI1});
+      if (!Succeed)
+        // Already packed this instruction
+        continue;
+      // singleton pack
+      auto &pack = Itr->second;
       for (auto InnerItr = std::next(OuterItr); InnerItr != MBB.end(); InnerItr++) {
         auto &MI2 = *InnerItr;
+        if (packs.contains(&MI2))
+          // Already packed this instruction
+          continue;
         if (dependencies[&MI1].contains(&MI2) || dependencies[&MI2].contains(&MI1))
           // don't pack if not independent
           continue;
         if (AliasInfo.packable(MI1, MI2)) {
           outs() << "Can pack:\n" << MI1 << MI2;
-        }
+          pack.push_back(&MI2);
+          packs[&MI2] = {&MI1, &MI2};
+          break;
+        } 
       }
     }
+    auto getPackDependencies = [&](const Pack &pack) {
+      return
+        pack 
+        | std::views::transform([&](MachineInstr *MI) -> std::vector<MachineInstr*> { 
+            return { dependencies[MI].begin(), dependencies[MI].end() };
+          })
+        | std::views::join
+        | std::views::transform([&](MachineInstr *MI) { return packs[MI]; });
+    };
+    auto getPackDependents = [&](const Pack &pack) {
+      return
+        pack 
+        | std::views::transform([&](MachineInstr *MI) -> std::vector<MachineInstr*> { 
+            return { dependents[MI].begin(), dependents[MI].end() };
+          })
+        | std::views::join
+        | std::views::transform([&](MachineInstr *MI) { return packs[MI]; });
+    };
+    SetVector<Pack> ToSchedule;
+    for (auto &[_, pack] : packs) {
+      auto deps = getPackDependencies(pack);
+      if (deps.begin() == deps.end()) {
+        // No deps
+        ToSchedule.insert(pack);
+      }
+    }
+    SetVector<Pack> Schedule;
+    while (!ToSchedule.empty()) {
+      auto pack = ToSchedule.pop_back_val();
+      auto deps = getPackDependencies(pack);
+      if (std::ranges::all_of(deps, [&](Pack pack) {
+        return Schedule.contains(pack);
+      })) {
+        // Every dependency of the pack has been scheduled
+        for (Pack Dependent : getPackDependents(pack)) {
+          // Check if all dependents of this pack can now be scheduled
+          ToSchedule.insert(std::move(Dependent));
+        }
+        // Schedule this pack
+        Schedule.insert(std::move(pack));
+      }
+    }
+    // Clear basic block to insert new schedule
+    for (auto Itr = MBB.begin(); Itr != MBB.end(); ) {
+      (Itr++)->removeFromParent();
+    }
+    // for (auto &MI : MBB) {
+      // MI.removeFromParent();
+    // }
+    DenseSet<MachineInstr *> scheduled;
+    for (auto pack : Schedule) {
+      assert(!pack.empty() && "Empty pack encountered");
+      if (pack.size() == 1) {
+        assert(!scheduled.contains(pack.front()));
+        scheduled.insert(pack.front());
+        // Singleton pack
+        // Emit same instruction
+        MBB.insert(MBB.end(), pack.front());
+      } else {
+        createPackedInstr(MBB, pack);
+        // Emit new packed instruction
+      }
+    }
+    MBB.dump();
+    // if (std::all_of(pack.begin(), pack.end(), 
+    // std::all_of(Deps.begin(), Deps.end(), [&](MachineInstr *Dep) {
+    //   return Schedule.contains(Dep);
+    // })) {
+    //   // All dependencies of this instruction have been scheduled
+    //   Schedule.insert()
+    // }
+    }
+    return false;
   }
   // for (auto &MBB : MF) {
   //   dumpBasicBlock(MBB);
   //   outs() << "=====================================\n";
   // }
-  return false;
-}
 
 } // end of anonymous namespace
 

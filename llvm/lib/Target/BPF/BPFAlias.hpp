@@ -33,6 +33,8 @@ struct Location {
   friend llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, const Location &L);
 };
 
+unsigned memorySize(const llvm::MachineInstr &MI);
+
 struct LatticeElement {
   //       T
   //      / \
