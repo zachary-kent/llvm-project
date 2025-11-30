@@ -44,6 +44,17 @@ bool Location::disjoint(const Location &other, unsigned Size1, unsigned Size2) c
   return *offset + Size1 <= *other.offset || *other.offset + Size2 <= *offset;
 }
 
+bool Location::adjacent(const Location &other, unsigned Size1, unsigned Size2) const {
+  if (region != other.region)
+    // Point to different regions, never adjacent
+    return false;
+  if (!offset || !other.offset)
+    // One pointer may span entire region
+    return false;
+  // This location directly before or after other
+  return *offset + Size1 == *other.offset || *other.offset + Size2 == *offset;
+}
+
 bool Location::singleton(const Location &other) const {
   return offset.has_value();
 }
@@ -157,6 +168,15 @@ bool LatticeElement::disjoint(const LatticeElement &Other, unsigned Size1, unsig
   assert(level != Level::Top && Other.level != Level::Top && "Top encountered");
   // Return whether the abstract locations are disjoint
   return loc.disjoint(Other.loc, Size1, Size2);
+}
+
+bool LatticeElement::adjacent(const LatticeElement &Other, unsigned Size1, unsigned Size2) const {
+  if (level == Level::Bot || Other.level == Level::Bot)
+    // Either this or other may alias anything
+    return false;
+  assert(level != Level::Top && Other.level != Level::Top && "Top encountered");
+  // Return whether the abstract locations are disjoint
+  return loc.adjacent(Other.loc, Size1, Size2);
 }
 
 raw_ostream &operator<<(raw_ostream &OS, const LatticeElement &LE) {
@@ -341,6 +361,40 @@ bool BPFAlias::conflict(const MachineInstr &MI1, const MachineInstr &MI2) const 
   unsigned Size2 = memorySize(MI2);
   // Abstract locations represented overlap
   return !LE1.disjoint(LE2, Size1, Size2);
+}
+
+bool BPFAlias::packable(const MachineInstr &MI1, const MachineInstr &MI2) const {
+  if (!isStoreImm(MI1.getOpcode()) || !isStoreImm(MI2.getOpcode()))
+    // Only pack store immediates
+    return false;
+  // Initially, every store imm in its own pack
+  // Repeat until convergence:
+  //  Merge adjacent, independent packs of same size to create new pack
+  //  When merge, ensure that does not introduce circular dep
+  //  Maintain mapping from instruction to pack
+  // Schedule:
+  //  Add to worklist all packs and instrs with no deps
+  //  Repeat while worklist non-empty:
+  //    let I = pop(worklist)
+  //    if all deps of I have been scheduled:
+  //      schedule I
+  //      add all dependents of I to worklist
+  //  Ensure no circular dependencies among packs
+  // First find adjacent store imms of same size, create Pairs
+  // Keep track of which instructions have been packed
+  // Repeatedly merge packs of same size
+  // 
+  unsigned Size1 = memorySize(MI1);
+  unsigned Size2 = memorySize(MI2);
+  if (Size1 != Size2 || Size1 == 8)
+    // Only pack stores of same size that are not already double word
+    return false;
+
+  auto LE1 = getInfo(MI1);
+  auto LE2 = getInfo(MI2);
+
+  // Only pack adjacent stores of same size
+  return LE1.adjacent(LE2, Size1, Size2);
 }
 
 LatticeElement BPFAlias::getInfo(const llvm::MachineInstr &MI) const {
