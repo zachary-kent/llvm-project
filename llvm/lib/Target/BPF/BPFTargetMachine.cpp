@@ -60,6 +60,9 @@ static cl::opt<bool>
 static cl::opt<bool>
     EnableSLP("bpf-enable-slp", cl::desc("Enable Superword-Level Merging"));
 
+static cl::opt<bool>
+    EnableMacroOpFusion("bpf-enable-fusion", cl::desc("Enable MacroOp Fusion"));
+
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   // Register the target.
   RegisterTargetMachine<BPFTargetMachine> X(getTheBPFleTarget());
@@ -168,6 +171,10 @@ void BPFTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
         // Run this after loop unrolling but before
         // SimplifyCFGPass(... .sinkCommonInsts(true))
         FPM.addPass(BPFPreserveStaticOffsetPass(false));
+      
+        // It is important to place this here, so it happens after loop unrolling
+        if(EnableMacroOpFusion)
+          FPM.addPass(BPFMacroOpFusion());
       });
   PB.registerPipelineEarlySimplificationEPCallback(
       [=](ModulePassManager &MPM, OptimizationLevel, ThinOrFullLTOPhase) {

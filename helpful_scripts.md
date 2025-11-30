@@ -18,15 +18,24 @@ cd /home/otso/suricata/
 ### Compile with certain clang
 ```sh
 # Without optimizations
-LLC=/home/otso/llvm_better/bin/llc  CC=/home/otso/llvm_better/bin/clang ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
+LLC=/home/otso/custom_llvm/bin/llc  CC=/home/otso/custom_llvm/bin/clang ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
+--enable-ebpf --enable-ebpf-build
 
 make clean && make
 
 
-# With optimizations
-BPF_CFLAGS="-mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce" LLC=/home/otso/llvm_better/bin/llc  CC=/home/otso/llvm-project/clang_opt ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
+LLC=/home/otso/custom_llvm/bin/llc  CC=/home/otso/llvm-project/clang_opt ./configure --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ \
+--enable-ebpf --enable-ebpf-build
 
 make clean && make
+
+# Compile just the ebpf filter:
+
+/home/otso/llvm-project/clang_opt -Wall -Iinclude -O2 -g -I/usr/include/x86_64-linux-gnu/ -D__KERNEL__ -D__ASM_SYSREG_H -target bpf -S -emit-llvm xdp_filter.c -o xdp_filter.ll
+
+/home/otso/custom_llvm/bin/llc -march=bpf -filetype=obj xdp_filter.ll -o xdp_filter.bpf 
+
+/home/otso/llvm-project/build/bin/llvm-objdump -S xdp_filter.bpf
 ```
 
 # Outputs filter to:

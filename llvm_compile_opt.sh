@@ -8,8 +8,10 @@ TARGET_DIR="$1"
 
 cat << EOF > $SCRIPT_DIR/clang_opt
 #!/bin/sh
-$TARGET_DIR/clang -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce "\$@"
+$SCRIPT_DIR/build/bin/clang -mllvm=-bpf-enable-fusion -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce "\$@"
 EOF
+
+chmod +x $SCRIPT_DIR/clang_opt
 
 echo "Starting to compile and install LLVM into $TARGET_DIR"
 
@@ -32,4 +34,9 @@ cmake -G Ninja \
 
 ninja install
 
+# MacroOp pass is put here
+# ./build/lib/Target/BPF/CMakeFiles/LLVMBPFCodeGen.dir/BPFMacroOpFusion.cpp.o
+
 popd
+
+

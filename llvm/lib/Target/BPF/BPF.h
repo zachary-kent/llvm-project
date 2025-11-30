@@ -81,6 +81,11 @@ public:
   static bool isRequired() { return true; }
 };
 
+class BPFMacroOpFusion : public PassInfoMixin<BPFMacroOpFusion> {
+public:
+  PreservedAnalyses run(Function &M, FunctionAnalysisManager &AM);
+};
+
 class BPFASpaceCastSimplifyPass
     : public PassInfoMixin<BPFASpaceCastSimplifyPass> {
 public:
