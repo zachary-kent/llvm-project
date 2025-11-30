@@ -392,7 +392,6 @@ bool BPFAlias::packable(const MachineInstr &MI1, const MachineInstr &MI2) const 
 
   auto LE1 = getInfo(MI1);
   auto LE2 = getInfo(MI2);
-
   // Only pack adjacent stores of same size
   return LE1.adjacent(LE2, Size1, Size2);
 }
@@ -491,7 +490,7 @@ bool BPFAlias::runOnMachineFunction(MachineFunction &MF) {
                 }
               }
               if (MI.getOperand(0).getImm() == BPF_MAP_LOOKUP_INDEX) {
-                getInfo(BPF::R0) = Location(Location::Region::Global);
+                getInfo(BPF::R0) = Location(Location::Region::Global, 0);
               } else {
                 getInfo(BPF::R0).level = LatticeElement::Level::Bot;
               }

@@ -125,6 +125,37 @@ constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
   BPF::R6, BPF::R7, BPF::R8, BPF::R9, BPF::R10, BPF::R11
 };
 
+MCRegister subRegToReg(MCRegister MCR) {
+  switch (MCR) {
+    case BPF::W0:
+      return BPF::R0;
+    case BPF::W1:
+      return BPF::R1;
+    case BPF::W2:
+      return BPF::R2;
+    case BPF::W3:
+      return BPF::R3;
+    case BPF::W4:
+      return BPF::R4;
+    case BPF::W5:
+      return BPF::R5;
+    case BPF::W6:
+      return BPF::R6;
+    case BPF::W7:
+      return BPF::R7;
+    case BPF::W8:
+      return BPF::R8;
+    case BPF::W9:
+      return BPF::R9;
+    case BPF::W10:
+      return BPF::R10;
+    case BPF::W11:
+      return BPF::R11;
+    default:
+      return MCR;
+  }
+}
+
 // Associates Register-Register instructions with corresponding
 // Register-Immediate ones
 const DenseMap<unsigned, unsigned> RR2RI {
@@ -142,13 +173,16 @@ const DenseMap<unsigned, unsigned> RR2RI {
 };
 
 const DenseMap<unsigned, unsigned> SR2SI {
+  { BPF::STB, BPF::STB_imm },
+  { BPF::STB32, BPF::STB_imm },
+  { BPF::STH, BPF::STH_imm },
+  { BPF::STH32, BPF::STH_imm },
   { BPF::STW, BPF::STW_imm },
+  { BPF::STW32, BPF::STW_imm },
   { BPF::STD, BPF::STD_imm },
-  { BPF::STW32, BPF::STW_imm }
 };
 
 bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
-  outs() << "Hello from const prop\n";
 
   const auto &TSI = MF.getSubtarget();
   const auto *TRI = TSI.getRegisterInfo();
@@ -160,7 +194,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
 
   // Every register initialized on entry is NAC
   for (auto MCR : InitializedOnEntry) {
-    boundary[TRI->getEncodingValue(MCR)].level = LatticeElement::Level::NAC;
+    boundary[TRI->getEncodingValue(subRegToReg(MCR))].level = LatticeElement::Level::NAC;
   }
 
   // Dataflow values at entry of every instruction
@@ -180,13 +214,12 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
       for (auto &MI : MBB) {
         ConstIn[&MI] = In;
         for (const auto &Def : MI.defs()) {
-          In[TRI->getEncodingValue(Def.getReg())].level = LatticeElement::Level::NAC;
+          In[TRI->getEncodingValue(subRegToReg(Def.getReg()))].level = LatticeElement::Level::NAC;
         }
         if (MI.isMoveImmediate()) {
-          outs() << "MOV SEEN" << MI.getOpcode() << "\n";
           auto Dst = MI.getOperand(0).getReg();
           auto Imm = MI.getOperand(1).getImm();
-          In[TRI->getEncodingValue(Dst)] = Imm;
+          In[TRI->getEncodingValue(subRegToReg(Dst))] = Imm;
         }
         for (const auto &MO : MI.operands()) {
           if (MO.isRegMask()) {
@@ -213,7 +246,6 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
       auto &MI = *I;
       unsigned Opcode = MI.getOpcode();
 
-      outs() << "OPCODE: " << Opcode << "\n";
       // Skip non-RR instructions
       if (RR2RI.contains(Opcode)) {
         assert(MI.getNumOperands() == 3);
@@ -221,7 +253,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
         auto Src = MI.getOperand(2);
         assert(Src.isReg() && Src.isUse());
         auto SrcReg = Src.getReg();
-        auto Value = ConstIn[&MI][TRI->getEncodingValue(SrcReg)];
+        auto Value = ConstIn[&MI][TRI->getEncodingValue(subRegToReg(SrcReg))];
         // Don't replace if NAC
         if (!Value.isConstant()) continue;
         auto Dst = MI.getOperand(0);
@@ -241,7 +273,7 @@ bool BPFConstProp::runOnMachineFunction(MachineFunction &MF) {
         auto Off = MI.getOperand(2);
         assert(Src.isReg() && Src.isUse());
         auto SrcReg = Src.getReg();
-        auto Value = ConstIn[&MI][TRI->getEncodingValue(SrcReg)];
+        auto Value = ConstIn[&MI][TRI->getEncodingValue(subRegToReg(SrcReg))];
         outs() << "Has value " << Value << '\n';
         // Don't replace if NAC
         if (!Value.isConstant()) continue;

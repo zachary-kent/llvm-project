@@ -82,8 +82,7 @@ void BPFSLP::dumpBasicBlock(const MachineBasicBlock &MBB) const {
 }
 
 bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
-  outs() << "Hello from const prop\n";
-
+  MF.dump();
   auto &AliasInfo = getAnalysis<BPFAlias>();
 
   const auto &TSI = MF.getSubtarget();
@@ -116,7 +115,6 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
         if (AliasInfo.conflict(MI1, MI2)) {
           // Both MI1 and MI2 are memory ops, at least one store
           // Both operate on overlapping locations
-          outs() << "Hit!\n";
           dependents[&MI1].insert(&MI2);
           dependencies[&MI2].insert(&MI1);
         }
@@ -138,9 +136,23 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     }
   }
   for (auto &MBB : MF) {
-    dumpBasicBlock(MBB);
-    outs() << "=====================================\n";
+    for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
+      auto &MI1 = *OuterItr;
+      for (auto InnerItr = std::next(OuterItr); InnerItr != MBB.end(); InnerItr++) {
+        auto &MI2 = *InnerItr;
+        if (dependencies[&MI1].contains(&MI2) || dependencies[&MI2].contains(&MI1))
+          // don't pack if not independent
+          continue;
+        if (AliasInfo.packable(MI1, MI2)) {
+          outs() << "Can pack:\n" << MI1 << MI2;
+        }
+      }
+    }
   }
+  // for (auto &MBB : MF) {
+  //   dumpBasicBlock(MBB);
+  //   outs() << "=====================================\n";
+  // }
   return false;
 }
 
