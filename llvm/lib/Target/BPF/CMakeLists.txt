@@ -1,6 +1,7 @@
 add_llvm_component_group(BPF)
 
 set(LLVM_TARGET_DEFINITIONS BPF.td)
+set(CMAKE_CXX_COMPILER g++-13)
 set(CMAKE_CXX_STANDARD 20)
 
 tablegen(LLVM BPFGenAsmMatcher.inc -gen-asm-matcher)

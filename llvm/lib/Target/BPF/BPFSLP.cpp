@@ -123,6 +123,37 @@ MachineInstr *createPackedInstr(MachineBasicBlock &MBB, const Pack &pack) {
     .addImm(First->getOperand(2).getImm());
 }
 
+MCRegister regToSubReg(MCRegister MCR) {
+  switch (MCR) {
+    case BPF::R0:
+      return BPF::W0;
+    case BPF::R1:
+      return BPF::W1;
+    case BPF::R2:
+      return BPF::W2;
+    case BPF::R3:
+      return BPF::W3;
+    case BPF::R4:
+      return BPF::W4;
+    case BPF::R5:
+      return BPF::W5;
+    case BPF::R6:
+      return BPF::W6;
+    case BPF::R7:
+      return BPF::W7;
+    case BPF::R8:
+      return BPF::W8;
+    case BPF::R9:
+      return BPF::W9;
+    case BPF::R10:
+      return BPF::W10;
+    case BPF::R11:
+      return BPF::W11;
+    default:
+      return MCR;
+  }
+}
+
 bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
   auto &AliasInfo = getAnalysis<BPFAlias>();
 
@@ -138,7 +169,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
         auto &MI2 = *InnerItr;
         for (auto &Use : OuterItr->all_uses()) {
           auto UseReg = Use.getReg().asMCReg();
-          if (InnerItr->definesRegister(UseReg, TRI)) {
+          if (InnerItr->definesRegister(UseReg, TRI) || InnerItr->definesRegister(regToSubReg(UseReg), TRI)) {
             // Later instruction defines one an earlier instruction uses
             // WAR dependency
             dependents[&MI1].insert(&MI2);
@@ -147,7 +178,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
         }
         for (auto &Def : OuterItr->all_defs()) {
           auto DefReg = Def.getReg().asMCReg();
-          if (InnerItr->definesRegister(DefReg, TRI)) {
+          if (InnerItr->definesRegister(DefReg, TRI) || InnerItr->definesRegister(regToSubReg(DefReg), TRI)) {
             // Later instruction defines one a later one also defines
             // WAW dependency
             dependents[&MI1].insert(&MI2);
@@ -176,7 +207,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
           for (auto &Use : OuterItr->all_uses()) {
             if (Use.isReg()) {
               auto UseReg = Use.getReg().asMCReg();
-              if (InnerItr->definesRegister(UseReg, TRI)) {
+              if (InnerItr->definesRegister(UseReg, TRI) || InnerItr->definesRegister(regToSubReg(UseReg), TRI)) {
                 // Earlier instruction defines a register used by a later one
                 dependents[&MI2].insert(&MI1);
                 dependencies[&MI1].insert(&MI2);
@@ -188,6 +219,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     }
     using Pack = SmallVector<MachineInstr *>;
     DenseMap<MachineInstr*, Pack> packs;
+    bool DidPack = false;
     for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
       auto &MI1 = *OuterItr;
       auto [Itr, Succeed] = packs.try_emplace(&MI1, SmallVector{&MI1});
@@ -206,12 +238,15 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
           continue;
         if (AliasInfo.packable(MI1, MI2)) {
           outs() << "Can pack:\n" << MI1 << MI2;
+          DidPack = true;
           pack.push_back(&MI2);
           packs[&MI2] = {&MI1, &MI2};
           break;
         } 
       }
     }
+    if (!DidPack)
+      continue;
     auto getPackDependencies = [&](const Pack &pack) {
       return
         pack 
@@ -263,6 +298,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     // }
     DenseSet<MachineInstr *> scheduled;
     for (auto pack : Schedule) {
+      std::reverse(pack.begin(), pack.end());
       assert(!pack.empty() && "Empty pack encountered");
       if (pack.size() == 1) {
         assert(!scheduled.contains(pack.front()));
@@ -284,7 +320,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     //   Schedule.insert()
     // }
     }
-    return false;
+    return true;
   }
   // for (auto &MBB : MF) {
   //   dumpBasicBlock(MBB);
