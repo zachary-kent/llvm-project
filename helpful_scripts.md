@@ -12,6 +12,25 @@ Will outputs:
 - /home/otso/katran/_build/deps/bpfprog/bpf/balancer.bpf.o
 
 ## Suricata
+
+
+filter.bpf = ipv4_drop map
+- uses an ipv4_drop map that contains set of ipv4 address to drop
+
+- pinned-maps, map pinned under /sys/fs/bpf/suricata-eth3-ipv4_drop
+
+
+bpfctrl
+https://github.com/StamusNetworks/bpfctrl
+
+sudo bpfctrl -m /sys/fs/bpf/suricata-wlp4s0-ipv4_drop ipv4 --add 1.2.3.4=1
+
+cp ebpf/xdp_filter.bpf /usr/libexec/suricata/ebpf/
+
+
+How to actually do this?
+
+
 # https://docs.suricata.io/en/latest/capture-hardware/ebpf-xdp.html#setup-xdp-bypass
 cd /home/otso/suricata/
 
