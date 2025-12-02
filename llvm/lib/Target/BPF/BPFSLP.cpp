@@ -43,8 +43,9 @@ public:
     return BPF_SLP_PASS_NAME;
   }
 private:
-  DenseMap<MachineInstr*, SmallPtrSet<MachineInstr*, NUM_DEPS>> dependencies;
-  DenseMap<MachineInstr*, SmallPtrSet<MachineInstr*, NUM_DEPS>> dependents;
+  // std::vector<BitVector> dependencies
+  // DenseMap<MachineInstr*, SmallPtrSet<MachineInstr*, NUM_DEPS>> dependencies;
+  // DenseMap<MachineInstr*, SmallPtrSet<MachineInstr*, NUM_DEPS>> dependents;
   void dumpBasicBlock(const MachineBasicBlock &MBB) const;
 };
 
@@ -123,6 +124,60 @@ MachineInstr *createPackedInstr(MachineBasicBlock &MBB, const Pack &pack) {
     .addImm(First->getOperand(2).getImm());
 }
 
+std::vector<unsigned> topologicalSort(const std::vector<BitVector> &G, const std::vector<BitVector> &Transpose) {
+  const unsigned V = G.size();
+  // Worklist[i] is set iff `i` has any incoming edges
+  BitVector Worklist(V);
+  for (const auto &BV : G) {
+    Worklist |= BV;
+  }
+  Worklist.flip();
+  BitVector Scheduled(V);
+  std::vector<unsigned> Schedule;
+  Schedule.reserve(V);
+  while (!Worklist.empty()) {
+    // Pop a node from worklist
+    unsigned Next = Worklist.find_first();
+    Worklist.reset(Next);
+    // Skip if already visited
+    if (Scheduled[Next]) continue;
+    bool Ready = true;
+    for (unsigned pred : Transpose[Next].set_bits()) {
+      // Check if all predecessors have been scheduled
+      if (!Scheduled[pred]) {
+        Ready = false;
+        break;
+      }
+    }
+    if (!Ready) continue;
+    // Schedule this node
+    Scheduled.set(Next);
+    Schedule.push_back(Next);
+    // Add all successors to worklist
+    for (unsigned succ : G[Next].set_bits()) {
+      Worklist.set(succ);
+    }
+  }
+  assert(Schedule.size() == V);
+  return Schedule;
+}
+
+// Compute the transitive, **irreflexive** closure of a graph
+std::vector<BitVector> transitiveClosure(const std::vector<BitVector> &G, const std::vector<BitVector> &Transpose) {
+  auto Schedule = topologicalSort(G, Transpose);
+  const unsigned N = G.size();
+  std::vector<BitVector> closure(N, BitVector(N));
+  // Iterate over graph in reverse topological ordering
+  for (auto I = Schedule.rbegin(); I != Schedule.rend(); I++) {
+    unsigned Node = *I;
+    // Closure of a node is equal to the union of the reflexvive closure of each succcessor
+    for (unsigned succ : G[Node].set_bits()) {
+      closure[Node].set(succ) |= closure[succ];
+    }
+  }
+  return closure;
+}
+
 MCRegister regToSubReg(MCRegister MCR) {
   switch (MCR) {
     case BPF::R0:
@@ -161,9 +216,19 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
   const auto *TRI = TSI.getRegisterInfo();
 
   for (auto &MBB : MF) {
+    DenseMap<MachineBasicBlock *, unsigned> BBIndex;
+    unsigned i = 0;
+    for (auto &MBB : MF) {
+      BBIndex[&MBB] = i++;
+    }
+    const unsigned N = MBB.size();
+    std::vector<BitVector> dependencies(N, BitVector(N));
+    std::vector<BitVector> dependents(N, BitVector(N));
     MBB.dump();
+    unsigned OuterIdx = 0;
     for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
       auto &MI1 = *OuterItr;
+      unsigned InnerIdx = 0;
       for (auto InnerItr = std::next(OuterItr); InnerItr != MBB.end(); InnerItr++) {
         // Iterate over all instructions after this one
         auto &MI2 = *InnerItr;
@@ -172,8 +237,8 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
           if (InnerItr->definesRegister(UseReg, TRI) || InnerItr->definesRegister(regToSubReg(UseReg), TRI)) {
             // Later instruction defines one an earlier instruction uses
             // WAR dependency
-            dependents[&MI1].insert(&MI2);
-            dependencies[&MI2].insert(&MI1);
+            dependents[OuterIdx].set(InnerIdx);
+            dependencies[InnerIdx].set(OuterIdx);
           }
         }
         for (auto &Def : OuterItr->all_defs()) {
@@ -181,26 +246,30 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
           if (InnerItr->definesRegister(DefReg, TRI) || InnerItr->definesRegister(regToSubReg(DefReg), TRI)) {
             // Later instruction defines one a later one also defines
             // WAW dependency
-            dependents[&MI1].insert(&MI2);
-            dependencies[&MI2].insert(&MI1);
+            dependents[OuterIdx].set(InnerIdx);
+            dependencies[InnerIdx].set(OuterIdx);
           }
         }
         if (AliasInfo.conflict(MI1, MI2)) {
           // Both MI1 and MI2 are memory ops, at least one store
           // Both operate on overlapping locations
-          dependents[&MI1].insert(&MI2);
-          dependencies[&MI2].insert(&MI1);
+            dependents[OuterIdx].set(InnerIdx);
+            dependencies[InnerIdx].set(OuterIdx);
         }
+        InnerIdx++;
       }
       if (OuterItr->isTerminator()) {
         // Terminator depends on all previous instructions
+        unsigned InnerIdx = 0;
         for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
           // Iterate over all instructions before this instruction
           auto &MI2 = *InnerItr;
-          dependents[&MI2].insert(&MI1);
-          dependencies[&MI1].insert(&MI2);
+          dependents[InnerIdx].set(OuterIdx);
+          dependencies[OuterIdx].set(InnerIdx);
+          InnerIdx++;
         }
       } else {
+        unsigned InnerIdx = 0;
         for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
           // Iterate over all instructions before this instruction
           auto &MI2 = *InnerItr;
@@ -209,17 +278,40 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
               auto UseReg = Use.getReg().asMCReg();
               if (InnerItr->definesRegister(UseReg, TRI) || InnerItr->definesRegister(regToSubReg(UseReg), TRI)) {
                 // Earlier instruction defines a register used by a later one
-                dependents[&MI2].insert(&MI1);
-                dependencies[&MI1].insert(&MI2);
+                dependents[InnerIdx].set(OuterIdx);
+                dependencies[OuterIdx].set(InnerIdx);
               }
             }
           }
+          InnerIdx++;
         }
       }
+      OuterIdx++;
     }
     using Pack = SmallVector<MachineInstr *>;
     DenseMap<MachineInstr*, Pack> packs;
     bool DidPack = false;
+    // New Approach
+    // Maintain mapping from instructions to dependencies
+    // Maintain mapping from region -> size -> instructions
+    // for i = 0..=2
+    //   for R in regions
+    //     let `packs` = packs of size 2^i
+    //     sort `packs` by offset
+    //     for every `pack` in `packs`
+    //        if `pack` not yet packed
+    //        for every `pack'` with offset equal to `pack.offset + 2^i`
+    //          if `pack'` not yet packed
+    //          `DoPack = true`
+    //          for inst `I` in `pack'` and `I'` in `pack'`
+    //            if  is not independent of I'
+    //               `DoPack = false`
+    //          if `DoPack`
+    //            pack together `pack` and `pack'
+    //            Add `pack` to 2^(i + 1)
+    //             
+    //        let `pack'` be the pack with offset equal to `pack.offset` + 2^i
+    //        Merge `pack
     for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
       auto &MI1 = *OuterItr;
       auto [Itr, Succeed] = packs.try_emplace(&MI1, SmallVector{&MI1});
@@ -237,9 +329,11 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
           // don't pack if not independent
           continue;
         if (AliasInfo.packable(MI1, MI2)) {
-          outs() << "Can pack:\n" << MI1 << MI2;
           DidPack = true;
           pack.push_back(&MI2);
+          std::sort(pack.begin(), pack.end(), [&](MachineInstr *MI1, MachineInstr *MI2) -> bool {
+             
+          });
           packs[&MI2] = {&MI1, &MI2};
           break;
         } 
@@ -298,7 +392,6 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     // }
     DenseSet<MachineInstr *> scheduled;
     for (auto pack : Schedule) {
-      std::reverse(pack.begin(), pack.end());
       assert(!pack.empty() && "Empty pack encountered");
       if (pack.size() == 1) {
         assert(!scheduled.contains(pack.front()));

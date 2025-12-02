@@ -69,6 +69,8 @@ struct LatticeElement {
 
 llvm::MCRegister subRegToReg(llvm::MCRegister MCR);
 
+using Pack = llvm::SmallVector<llvm::MachineInstr *>;
+
 class BPFAlias : public llvm::MachineFunctionPass {
 public:
   using PointerInfo = std::array<LatticeElement, NUM_BPF_REGS>;
@@ -78,7 +80,8 @@ public:
   llvm::StringRef getPassName() const override;
   llvm::DenseMap<llvm::MachineInstr*, PointerInfo> PointerIn;
   bool conflict(const llvm::MachineInstr &MI1, const llvm::MachineInstr &MI2) const;
-  bool packable(const llvm::MachineInstr &MI1, const llvm::MachineInstr &MI2) const;
+  std::optional<Pack> pack(const Pack &P1, const Pack &P2) const;
+  std::optional<Pack> pack(const llvm::MachineInstr &MI1, const llvm::MachineInstr &MI2) const;
   const LatticeElement &getInfo(const llvm::MachineInstr &MI, llvm::MCRegister MCR) const;
   LatticeElement getInfo(const llvm::MachineInstr &MI) const;
 };

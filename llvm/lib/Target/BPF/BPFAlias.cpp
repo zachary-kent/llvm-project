@@ -363,10 +363,52 @@ bool BPFAlias::conflict(const MachineInstr &MI1, const MachineInstr &MI2) const 
   return !LE1.disjoint(LE2, Size1, Size2);
 }
 
-bool BPFAlias::packable(const MachineInstr &MI1, const MachineInstr &MI2) const {
+std::optional<Pack> BPFAlias::pack(const Pack &P1, const Pack &P2) const {
+  auto *MI1 = P1.front();
+  auto *MI2 = P2.front();
+  if (!isStoreImm(MI1->getOpcode()) || !isStoreImm(MI2->getOpcode()))
+    // Only pack store immediates
+    return {};
+  // Initially, every store imm in its own pack
+  // Repeat until convergence:
+  //  Merge adjacent, independent packs of same size to create new pack
+  //  When merge, ensure that does not introduce circular dep
+  //  Maintain mapping from instruction to pack
+  // Schedule:
+  //  Add to worklist all packs and instrs with no deps
+  //  Repeat while worklist non-empty:
+  //    let I = pop(worklist)
+  //    if all deps of I have been scheduled:
+  //      schedule I
+  //      add all dependents of I to worklist
+  //  Ensure no circular dependencies among packs
+  // First find adjacent store imms of same size, create Pairs
+  // Keep track of which instructions have been packed
+  // Repeatedly merge packs of same size
+  // 
+  unsigned Size1 = memorySize(*MI1) * P1.size();
+  unsigned Size2 = memorySize(*MI2) * P2.size();
+  if (Size1 != Size2 || Size1 == 8)
+    // Only pack stores of same size that are not already double word
+    return {};
+
+  auto LE1 = getInfo(*MI1);
+  auto LE2 = getInfo(*MI2);
+  const auto *Fst = &P1;
+  const auto *Snd = &P2;
+  if (*LE1.loc.offset > *LE2.loc.offset) {
+    // P1 after P2
+    std::swap(Fst, Snd);
+  }
+  auto Merged = *Fst;
+  Merged.append(*Snd);
+  return Merged;
+}
+
+std::optional<SmallVector<MachineInstr *>> BPFAlias::pack(const MachineInstr &MI1, const MachineInstr &MI2) const {
   if (!isStoreImm(MI1.getOpcode()) || !isStoreImm(MI2.getOpcode()))
     // Only pack store immediates
-    return false;
+    return {};
   // Initially, every store imm in its own pack
   // Repeat until convergence:
   //  Merge adjacent, independent packs of same size to create new pack
@@ -388,12 +430,21 @@ bool BPFAlias::packable(const MachineInstr &MI1, const MachineInstr &MI2) const 
   unsigned Size2 = memorySize(MI2);
   if (Size1 != Size2 || Size1 == 8)
     // Only pack stores of same size that are not already double word
-    return false;
+    return {};
 
   auto LE1 = getInfo(MI1);
   auto LE2 = getInfo(MI2);
   // Only pack adjacent stores of same size
-  return LE1.adjacent(LE2, Size1, Size2);
+  if (LE1.adjacent(LE2, Size1, Size2)) {
+    SmallVector pack{&MI1, &MI2};
+    
+    std::sort(pack.begin(), pack.end(), [&](MachineInstr *I1, MachineInstr *I2) {
+      return *getInfo(*I1).loc.offset < *getInfo
+    });
+    return pack;
+  } else {
+    return {};
+  }
 }
 
 LatticeElement BPFAlias::getInfo(const llvm::MachineInstr &MI) const {
