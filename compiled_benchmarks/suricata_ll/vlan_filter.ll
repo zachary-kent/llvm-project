@@ -1,0 +1,145 @@
+; ModuleID = 'vlan_filter.c'
+source_filename = "vlan_filter.c"
+target datalayout = "e-m:e-p:64:64-i64:64-i128:128-n32:64-S128"
+target triple = "bpf"
+
+@__license = dso_local global [4 x i8] c"GPL\00", section "license", align 1, !dbg !0
+@__version = dso_local global i32 263682, section "version", align 4, !dbg !5
+@llvm.compiler.used = appending global [3 x ptr] [ptr @__license, ptr @__version, ptr @hashfilter], section "llvm.metadata"
+
+; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read)
+define dso_local range(i32 -1, 1) i32 @hashfilter(ptr noundef readonly captures(none) %skb) #0 section "filter" !dbg !24 {
+entry:
+    #dbg_value(ptr %skb, !104, !DIExpression(), !106)
+  %vlan_tci = getelementptr inbounds nuw i8, ptr %skb, i64 24, !dbg !107
+  %0 = load i32, ptr %vlan_tci, align 8, !dbg !107, !tbaa !108
+  %conv = and i32 %0, 4095, !dbg !111
+    #dbg_value(i32 %conv, !105, !DIExpression(), !106)
+  %1 = add nsw i32 %conv, -2, !dbg !112
+  %switch.and = and i32 %1, -3, !dbg !112
+  %switch.selectcmp = icmp eq i32 %switch.and, 0, !dbg !112
+  %2 = sext i1 %switch.selectcmp to i32, !dbg !112
+  ret i32 %2, !dbg !113
+}
+
+attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(argmem: read) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" }
+
+!llvm.dbg.cu = !{!2}
+!llvm.module.flags = !{!14, !15, !16, !17, !18}
+!llvm.ident = !{!19}
+!llvm.errno.tbaa = !{!20}
+
+!0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
+!1 = distinct !DIGlobalVariable(name: "__license", scope: !2, file: !3, line: 38, type: !10, isLocal: false, isDefinition: true)
+!2 = distinct !DICompileUnit(language: DW_LANG_C11, file: !3, producer: "clang version 22.0.0git (https://github.com/zachary-kent/llvm-project/ 17a443e799e99026e9430fea2d6fc19b39cb5b8b)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, globals: !4, splitDebugInlining: false, nameTableKind: None)
+!3 = !DIFile(filename: "vlan_filter.c", directory: "/home/otso/suricata/ebpf", checksumkind: CSK_MD5, checksum: "03c4e464b39487d52c496642f5e404d7")
+!4 = !{!0, !5}
+!5 = !DIGlobalVariableExpression(var: !6, expr: !DIExpression())
+!6 = distinct !DIGlobalVariable(name: "__version", scope: !2, file: !3, line: 40, type: !7, isLocal: false, isDefinition: true)
+!7 = !DIDerivedType(tag: DW_TAG_typedef, name: "__u32", file: !8, line: 27, baseType: !9)
+!8 = !DIFile(filename: "/usr/include/asm-generic/int-ll64.h", directory: "", checksumkind: CSK_MD5, checksum: "b810f270733e106319b67ef512c6246e")
+!9 = !DIBasicType(name: "unsigned int", size: 32, encoding: DW_ATE_unsigned)
+!10 = !DICompositeType(tag: DW_TAG_array_type, baseType: !11, size: 32, elements: !12)
+!11 = !DIBasicType(name: "char", size: 8, encoding: DW_ATE_signed_char)
+!12 = !{!13}
+!13 = !DISubrange(count: 4)
+!14 = !{i32 7, !"Dwarf Version", i32 5}
+!15 = !{i32 2, !"Debug Info Version", i32 3}
+!16 = !{i32 1, !"wchar_size", i32 4}
+!17 = !{i32 7, !"frame-pointer", i32 2}
+!18 = !{i32 7, !"debug-info-assignment-tracking", i1 true}
+!19 = !{!"clang version 22.0.0git (https://github.com/zachary-kent/llvm-project/ 17a443e799e99026e9430fea2d6fc19b39cb5b8b)"}
+!20 = !{!21, !21, i64 0}
+!21 = !{!"int", !22, i64 0}
+!22 = !{!"omnipotent char", !23, i64 0}
+!23 = !{!"Simple C/C++ TBAA"}
+!24 = distinct !DISubprogram(name: "hashfilter", scope: !3, file: !3, line: 25, type: !25, scopeLine: 25, flags: DIFlagPrototyped | DIFlagAllCallsDescribed, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !2, retainedNodes: !103, keyInstructions: true)
+!25 = !DISubroutineType(types: !26)
+!26 = !{!27, !28}
+!27 = !DIBasicType(name: "int", size: 32, encoding: DW_ATE_signed)
+!28 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !29, size: 64)
+!29 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "__sk_buff", file: !30, line: 2489, size: 1344, elements: !31)
+!30 = !DIFile(filename: "include/linux/bpf.h", directory: "/home/otso/suricata/ebpf", checksumkind: CSK_MD5, checksum: "783c30496bbc98655006468758d90a0e")
+!31 = !{!32, !33, !34, !35, !36, !37, !38, !39, !40, !41, !42, !43, !44, !48, !49, !50, !51, !52, !53, !54, !55, !56, !58, !59, !60, !61, !62, !99, !102}
+!32 = !DIDerivedType(tag: DW_TAG_member, name: "len", scope: !29, file: !30, line: 2490, baseType: !7, size: 32)
+!33 = !DIDerivedType(tag: DW_TAG_member, name: "pkt_type", scope: !29, file: !30, line: 2491, baseType: !7, size: 32, offset: 32)
+!34 = !DIDerivedType(tag: DW_TAG_member, name: "mark", scope: !29, file: !30, line: 2492, baseType: !7, size: 32, offset: 64)
+!35 = !DIDerivedType(tag: DW_TAG_member, name: "queue_mapping", scope: !29, file: !30, line: 2493, baseType: !7, size: 32, offset: 96)
+!36 = !DIDerivedType(tag: DW_TAG_member, name: "protocol", scope: !29, file: !30, line: 2494, baseType: !7, size: 32, offset: 128)
+!37 = !DIDerivedType(tag: DW_TAG_member, name: "vlan_present", scope: !29, file: !30, line: 2495, baseType: !7, size: 32, offset: 160)
+!38 = !DIDerivedType(tag: DW_TAG_member, name: "vlan_tci", scope: !29, file: !30, line: 2496, baseType: !7, size: 32, offset: 192)
+!39 = !DIDerivedType(tag: DW_TAG_member, name: "vlan_proto", scope: !29, file: !30, line: 2497, baseType: !7, size: 32, offset: 224)
+!40 = !DIDerivedType(tag: DW_TAG_member, name: "priority", scope: !29, file: !30, line: 2498, baseType: !7, size: 32, offset: 256)
+!41 = !DIDerivedType(tag: DW_TAG_member, name: "ingress_ifindex", scope: !29, file: !30, line: 2499, baseType: !7, size: 32, offset: 288)
+!42 = !DIDerivedType(tag: DW_TAG_member, name: "ifindex", scope: !29, file: !30, line: 2500, baseType: !7, size: 32, offset: 320)
+!43 = !DIDerivedType(tag: DW_TAG_member, name: "tc_index", scope: !29, file: !30, line: 2501, baseType: !7, size: 32, offset: 352)
+!44 = !DIDerivedType(tag: DW_TAG_member, name: "cb", scope: !29, file: !30, line: 2502, baseType: !45, size: 160, offset: 384)
+!45 = !DICompositeType(tag: DW_TAG_array_type, baseType: !7, size: 160, elements: !46)
+!46 = !{!47}
+!47 = !DISubrange(count: 5)
+!48 = !DIDerivedType(tag: DW_TAG_member, name: "hash", scope: !29, file: !30, line: 2503, baseType: !7, size: 32, offset: 544)
+!49 = !DIDerivedType(tag: DW_TAG_member, name: "tc_classid", scope: !29, file: !30, line: 2504, baseType: !7, size: 32, offset: 576)
+!50 = !DIDerivedType(tag: DW_TAG_member, name: "data", scope: !29, file: !30, line: 2505, baseType: !7, size: 32, offset: 608)
+!51 = !DIDerivedType(tag: DW_TAG_member, name: "data_end", scope: !29, file: !30, line: 2506, baseType: !7, size: 32, offset: 640)
+!52 = !DIDerivedType(tag: DW_TAG_member, name: "napi_id", scope: !29, file: !30, line: 2507, baseType: !7, size: 32, offset: 672)
+!53 = !DIDerivedType(tag: DW_TAG_member, name: "family", scope: !29, file: !30, line: 2510, baseType: !7, size: 32, offset: 704)
+!54 = !DIDerivedType(tag: DW_TAG_member, name: "remote_ip4", scope: !29, file: !30, line: 2511, baseType: !7, size: 32, offset: 736)
+!55 = !DIDerivedType(tag: DW_TAG_member, name: "local_ip4", scope: !29, file: !30, line: 2512, baseType: !7, size: 32, offset: 768)
+!56 = !DIDerivedType(tag: DW_TAG_member, name: "remote_ip6", scope: !29, file: !30, line: 2513, baseType: !57, size: 128, offset: 800)
+!57 = !DICompositeType(tag: DW_TAG_array_type, baseType: !7, size: 128, elements: !12)
+!58 = !DIDerivedType(tag: DW_TAG_member, name: "local_ip6", scope: !29, file: !30, line: 2514, baseType: !57, size: 128, offset: 928)
+!59 = !DIDerivedType(tag: DW_TAG_member, name: "remote_port", scope: !29, file: !30, line: 2515, baseType: !7, size: 32, offset: 1056)
+!60 = !DIDerivedType(tag: DW_TAG_member, name: "local_port", scope: !29, file: !30, line: 2516, baseType: !7, size: 32, offset: 1088)
+!61 = !DIDerivedType(tag: DW_TAG_member, name: "data_meta", scope: !29, file: !30, line: 2519, baseType: !7, size: 32, offset: 1120)
+!62 = !DIDerivedType(tag: DW_TAG_member, scope: !29, file: !30, line: 2520, baseType: !63, size: 64, align: 64, offset: 1152)
+!63 = distinct !DICompositeType(tag: DW_TAG_union_type, scope: !29, file: !30, line: 2520, size: 64, align: 64, elements: !64)
+!64 = !{!65}
+!65 = !DIDerivedType(tag: DW_TAG_member, name: "flow_keys", scope: !63, file: !30, line: 2520, baseType: !66, size: 64)
+!66 = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: !67, size: 64)
+!67 = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "bpf_flow_keys", file: !30, line: 2999, size: 384, elements: !68)
+!68 = !{!69, !72, !73, !74, !77, !78, !79, !80, !83, !84, !85}
+!69 = !DIDerivedType(tag: DW_TAG_member, name: "nhoff", scope: !67, file: !30, line: 3000, baseType: !70, size: 16)
+!70 = !DIDerivedType(tag: DW_TAG_typedef, name: "__u16", file: !8, line: 24, baseType: !71)
+!71 = !DIBasicType(name: "unsigned short", size: 16, encoding: DW_ATE_unsigned)
+!72 = !DIDerivedType(tag: DW_TAG_member, name: "thoff", scope: !67, file: !30, line: 3001, baseType: !70, size: 16, offset: 16)
+!73 = !DIDerivedType(tag: DW_TAG_member, name: "addr_proto", scope: !67, file: !30, line: 3002, baseType: !70, size: 16, offset: 32)
+!74 = !DIDerivedType(tag: DW_TAG_member, name: "is_frag", scope: !67, file: !30, line: 3003, baseType: !75, size: 8, offset: 48)
+!75 = !DIDerivedType(tag: DW_TAG_typedef, name: "__u8", file: !8, line: 21, baseType: !76)
+!76 = !DIBasicType(name: "unsigned char", size: 8, encoding: DW_ATE_unsigned_char)
+!77 = !DIDerivedType(tag: DW_TAG_member, name: "is_first_frag", scope: !67, file: !30, line: 3004, baseType: !75, size: 8, offset: 56)
+!78 = !DIDerivedType(tag: DW_TAG_member, name: "is_encap", scope: !67, file: !30, line: 3005, baseType: !75, size: 8, offset: 64)
+!79 = !DIDerivedType(tag: DW_TAG_member, name: "ip_proto", scope: !67, file: !30, line: 3006, baseType: !75, size: 8, offset: 72)
+!80 = !DIDerivedType(tag: DW_TAG_member, name: "n_proto", scope: !67, file: !30, line: 3007, baseType: !81, size: 16, offset: 80)
+!81 = !DIDerivedType(tag: DW_TAG_typedef, name: "__be16", file: !82, line: 32, baseType: !70)
+!82 = !DIFile(filename: "/usr/include/linux/types.h", directory: "", checksumkind: CSK_MD5, checksum: "c0ade1a1a309d6896ce6080a51a2d105")
+!83 = !DIDerivedType(tag: DW_TAG_member, name: "sport", scope: !67, file: !30, line: 3008, baseType: !81, size: 16, offset: 96)
+!84 = !DIDerivedType(tag: DW_TAG_member, name: "dport", scope: !67, file: !30, line: 3009, baseType: !81, size: 16, offset: 112)
+!85 = !DIDerivedType(tag: DW_TAG_member, scope: !67, file: !30, line: 3010, baseType: !86, size: 256, offset: 128)
+!86 = distinct !DICompositeType(tag: DW_TAG_union_type, scope: !67, file: !30, line: 3010, size: 256, elements: !87)
+!87 = !{!88, !94}
+!88 = !DIDerivedType(tag: DW_TAG_member, scope: !86, file: !30, line: 3011, baseType: !89, size: 64)
+!89 = distinct !DICompositeType(tag: DW_TAG_structure_type, scope: !86, file: !30, line: 3011, size: 64, elements: !90)
+!90 = !{!91, !93}
+!91 = !DIDerivedType(tag: DW_TAG_member, name: "ipv4_src", scope: !89, file: !30, line: 3012, baseType: !92, size: 32)
+!92 = !DIDerivedType(tag: DW_TAG_typedef, name: "__be32", file: !82, line: 34, baseType: !7)
+!93 = !DIDerivedType(tag: DW_TAG_member, name: "ipv4_dst", scope: !89, file: !30, line: 3013, baseType: !92, size: 32, offset: 32)
+!94 = !DIDerivedType(tag: DW_TAG_member, scope: !86, file: !30, line: 3015, baseType: !95, size: 256)
+!95 = distinct !DICompositeType(tag: DW_TAG_structure_type, scope: !86, file: !30, line: 3015, size: 256, elements: !96)
+!96 = !{!97, !98}
+!97 = !DIDerivedType(tag: DW_TAG_member, name: "ipv6_src", scope: !95, file: !30, line: 3016, baseType: !57, size: 128)
+!98 = !DIDerivedType(tag: DW_TAG_member, name: "ipv6_dst", scope: !95, file: !30, line: 3017, baseType: !57, size: 128, offset: 128)
+!99 = !DIDerivedType(tag: DW_TAG_member, name: "tstamp", scope: !29, file: !30, line: 2521, baseType: !100, size: 64, offset: 1216)
+!100 = !DIDerivedType(tag: DW_TAG_typedef, name: "__u64", file: !8, line: 31, baseType: !101)
+!101 = !DIBasicType(name: "unsigned long long", size: 64, encoding: DW_ATE_unsigned)
+!102 = !DIDerivedType(tag: DW_TAG_member, name: "wire_len", scope: !29, file: !30, line: 2522, baseType: !7, size: 32, offset: 1280)
+!103 = !{!104, !105}
+!104 = !DILocalVariable(name: "skb", arg: 1, scope: !24, file: !3, line: 25, type: !28)
+!105 = !DILocalVariable(name: "vlan_id", scope: !24, file: !3, line: 26, type: !70)
+!106 = !DILocation(line: 0, scope: !24)
+!107 = !DILocation(line: 26, column: 26, scope: !24)
+!108 = !{!109, !21, i64 24}
+!109 = !{!"__sk_buff", !21, i64 0, !21, i64 4, !21, i64 8, !21, i64 12, !21, i64 16, !21, i64 20, !21, i64 24, !21, i64 28, !21, i64 32, !21, i64 36, !21, i64 40, !21, i64 44, !22, i64 48, !21, i64 68, !21, i64 72, !21, i64 76, !21, i64 80, !21, i64 84, !21, i64 88, !21, i64 92, !21, i64 96, !22, i64 100, !22, i64 116, !21, i64 132, !21, i64 136, !21, i64 140, !22, i64 144, !110, i64 152, !21, i64 160}
+!110 = !{!"long long", !22, i64 0}
+!111 = !DILocation(line: 26, column: 21, scope: !24, atomGroup: 1, atomRank: 2)
+!112 = !DILocation(line: 28, column: 5, scope: !24, atomGroup: 2, atomRank: 1)
+!113 = !DILocation(line: 36, column: 1, scope: !24, atomGroup: 5, atomRank: 1)

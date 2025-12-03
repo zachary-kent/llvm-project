@@ -1,33 +1,13 @@
-/home/otso/llvm-project/clang_opt -Wall -Iinclude -O2 -g \                                    
-        -I/usr/include/x86_64-linux-gnu/ \                                                    
-        -D__KERNEL__ -D__ASM_SYSREG_H \                                                       
-        -target bpf -S -emit-llvm filter.c -o filter.ll  
+/home/otso/llvm-project/build/bin/clang -Wall -Iinclude -O2 -g -I/usr/include/x86_64-linux-gnu/ -D__KERNEL__ -D__ASM_SYSREG_H -target bpf -S -emit-llvm filter.c -o filter.ll  
 
-/home/otso/llvm-project/clang_opt -Wall -Iinclude -O2 -g \
-        -I/usr/include/x86_64-linux-gnu/ \
-        -D__KERNEL__ -D__ASM_SYSREG_H \
-        -target bpf -S -emit-llvm vlan_filter.c -o vlan_filter.ll
+/home/otso/llvm-project/build/bin/clang -Wall -Iinclude -O2 -g -I/usr/include/x86_64-linux-gnu/ -D__KERNEL__ -D__ASM_SYSREG_H -target bpf -S -emit-llvm vlan_filter.c -o vlan_filter.ll
     
-/home/otso/llvm-project/clang_opt -Wall -Iinclude -O2 -g \
-        -I/usr/include/x86_64-linux-gnu/ \
-        -D__KERNEL__ -D__ASM_SYSREG_H \
-        -target bpf -S -emit-llvm xdp_lb.c -o xdp_lb.ll
+/home/otso/llvm-project/build/bin/clang -Wall -Iinclude -O2 -g -I/usr/include/x86_64-linux-gnu/ -D__KERNEL__ -D__ASM_SYSREG_H -target bpf -S -emit-llvm xdp_lb.c -o xdp_lb.ll
 
-/home/otso/llvm-project/clang_opt -Wall -Iinclude -O2 -g \
-        -I/usr/include/x86_64-linux-gnu/ \
-        -D__KERNEL__ -D__ASM_SYSREG_H \
-        -target bpf -S -emit-llvm vlan_filter.c -o vlan_filter.ll
+/home/otso/llvm-project/build/bin/clang -Wall -Iinclude -O2 -g -I/usr/include/x86_64-linux-gnu/ -D__KERNEL__ -D__ASM_SYSREG_H -target bpf -S -emit-llvm xdp_filter.c -o xdp_filter.ll
 
 
 
-
-
-
-
-/home/otso/llvm-project/clang_opt -Wall -Iinclude -O2 -g \
-        -I/usr/include/x86_64-linux-gnu/ \
-        -D__KERNEL__ -D__ASM_SYSREG_H \
-        -target bpf -S -emit-llvm xdp_filter.c -o xdp_filter.ll
 
 /home/otso/custom_llvm/bin/llc -march=bpf -filetype=obj xdp_filter.ll -o xdp_filter.bpf
 
