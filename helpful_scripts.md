@@ -1,3 +1,22 @@
+Running IR passes with OPT
+
+Go to root directory, run
+```
+make
+```
+
+This creates a fusion.so and and align.so
+
+./build/bin/opt -load-pass-plugin=./align.so -passes=bpfalign tunnel.ll -o tunnel.bc
+./build/bin/opt -load-pass-plugin=./fusion.so -passes=bpffusion tunnel.ll -o tunnel.bc
+
+Both:
+
+./build/bin/opt -load-pass-plugin=./align.so -load-pass-plugin=./fusion.so -passes="bpfalign,bpffusion" tunnel.ll -o tunnel.bc
+
+
+
+
 sudo bpftool prog show
 
 

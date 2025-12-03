@@ -41,4 +41,6 @@ ninja install
 
 popd
 
+set -ex
 
+$SCRIPT_DIR/compile_passes.sh

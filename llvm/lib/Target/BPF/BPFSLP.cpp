@@ -409,7 +409,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     }
     bool DidPack = false;
     for (size_t Region = 0; Region < NUM_REGIONS; Region++) {
-      for (size_t Size = 0; Size < NUM_SIZES; Size++) {
+      for (size_t Size = 0; Size < NUM_SIZES - 1; Size++) {
         auto &SizedPacks = StoreImms[Region][Size];
         BitVector Merged(N);
         // Merge packs of size 2^Size
