@@ -18,7 +18,6 @@
 
 #include <array>
 #include <algorithm>
-#include <ranges>
 
 using namespace llvm;
 
