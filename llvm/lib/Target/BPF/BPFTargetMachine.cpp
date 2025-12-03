@@ -66,6 +66,9 @@ static cl::opt<bool>
 static cl::opt<bool>
     EnableAlignment("bpf-enable-alignment", cl::desc("Enable MacroOp Fusion"));
 
+static cl::opt<bool>
+    EnableCount("bpf-enable-count", cl::Hidden, cl::desc("Print machine instruction count"));
+
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   // Register the target.
   RegisterTargetMachine<BPFTargetMachine> X(getTheBPFleTarget());
@@ -246,6 +249,8 @@ void BPFPassConfig::addPreEmitPass() {
     addPass(createBPFSLPPass());
   if (EnableInstrumentation)
     addPass(createBPFInstrumentFinalPass());
+  if (EnableCount)
+    addPass(createBPFCountPass());
 }
 
 bool BPFPassConfig::addIRTranslator() {
