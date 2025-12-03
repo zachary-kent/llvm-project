@@ -63,6 +63,9 @@ static cl::opt<bool>
 static cl::opt<bool>
     EnableMacroOpFusion("bpf-enable-fusion", cl::desc("Enable MacroOp Fusion"));
 
+static cl::opt<bool>
+    EnableAlignment("bpf-enable-alignment", cl::desc("Enable MacroOp Fusion"));
+
 extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeBPFTarget() {
   // Register the target.
   RegisterTargetMachine<BPFTargetMachine> X(getTheBPFleTarget());
@@ -175,6 +178,10 @@ void BPFTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
         // It is important to place this here, so it happens after loop unrolling
         if(EnableMacroOpFusion)
           FPM.addPass(BPFMacroOpFusion());
+      
+        if(EnableAlignment)
+          FPM.addPass(BPFDataAlignment());
+
       });
   PB.registerPipelineEarlySimplificationEPCallback(
       [=](ModulePassManager &MPM, OptimizationLevel, ThinOrFullLTOPhase) {

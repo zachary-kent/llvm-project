@@ -86,6 +86,11 @@ public:
   PreservedAnalyses run(Function &M, FunctionAnalysisManager &AM);
 };
 
+class BPFDataAlignment : public PassInfoMixin<BPFDataAlignment> {
+public:
+  PreservedAnalyses run(Function &M, FunctionAnalysisManager &AM);
+};
+
 class BPFASpaceCastSimplifyPass
     : public PassInfoMixin<BPFASpaceCastSimplifyPass> {
 public:

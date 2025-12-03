@@ -26,6 +26,7 @@ add_llvm_target(BPFCodeGen
   BPFAbstractMemberAccess.cpp
   BPFAdjustOpt.cpp
   BPFMacroOpFusion.cpp
+  BPFDataAlignment.cpp
   BPFAsmPrinter.cpp
   BPFASpaceCastSimplifyPass.cpp
   BPFCheckAndAdjustIR.cpp
