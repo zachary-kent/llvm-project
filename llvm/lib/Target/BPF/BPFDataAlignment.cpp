@@ -141,13 +141,17 @@ PreservedAnalyses BPFDataAlignment::run(Function &F,
       // array, the array offset also missing
 
       // Now, we calculate the accumulate offset of the reference
-      APInt Offset;
+      APInt Offset(DL.getIndexSizeInBits(Ptr->getType()->getPointerAddressSpace()), 0,
+        /* isSigned= */ true);
       if (GEP->accumulateConstantOffset(DL, Offset)) {
         Alignment =
             positive_modulo(Offset.getSExtValue() + PtrAlign, PTR_ALIGN);
+        if (*Alignment == 0)
+          Alignment = 8;
       }
     }
     if (Alignment) {
+      assert(*Alignment != 0);
       alignment_info[I] = *Alignment;
       for (auto *User : I->users()) {
         if (auto *UserInstr = dyn_cast<Instruction>(User)) {
