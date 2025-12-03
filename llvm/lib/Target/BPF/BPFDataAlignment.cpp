@@ -179,16 +179,16 @@ PreservedAnalyses BPFDataAlignment::run(Function &F,
         auto *Source = Load->getPointerOperand();
         uint32_t old_alignment = Load->getAlign().value();
         auto new_alignment = newAlign(Source, Load->getType());
-        if (!new_alignment || *new_alignment > old_alignment) continue;
+        if (!new_alignment || *new_alignment <= old_alignment) continue;
         Load->setAlignment(Align(*new_alignment));
-        outs() << "Set alignment\n";
+        outs() << "Promoted Alignment from " << old_alignment << " to " << *new_alignment << '\n';
       } else if (auto *Store = dyn_cast<StoreInst>(&I)) {
         auto *Dest = Store->getPointerOperand();
         uint32_t old_alignment = Store->getAlign().value(); 
         auto new_alignment = newAlign(Dest, Store->getValueOperand()->getType());
-        if (!new_alignment || *new_alignment > old_alignment) continue;
+        if (!new_alignment || *new_alignment <= old_alignment) continue;
         Store->setAlignment(Align(*new_alignment));
-        outs() << "Set alignment\n";
+        outs() << "Promoted Alignment from " << old_alignment << " to " << *new_alignment << '\n';
       } 
       // else if (auto *Call = dyn_cast<CallInst>(&I)) {
       //   // By default, we cannot detect that pointers in the memcpys are aligned
