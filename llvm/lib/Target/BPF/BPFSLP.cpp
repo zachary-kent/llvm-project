@@ -386,7 +386,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
       OuterIdx++;
     }
     EquivalenceClasses<unsigned> Packs;
-    constexpr size_t NUM_SIZES = 3;
+    constexpr size_t NUM_SIZES = 4;
     constexpr size_t NUM_REGIONS = 4;
     auto transitiveDependencies = transitiveClosure(dependencies, dependents);
     auto transitiveDependents = transitiveClosure(dependents, dependencies);
