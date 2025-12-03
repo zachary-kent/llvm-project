@@ -23,17 +23,17 @@
 
 using namespace llvm;
 
-uint32_t get_alignment_of_object_size(uint32_t size) {
-  if (size % 8 == 0)
+inline int positive_modulo(int i, int n) { return (i % n + n) % n; }
+
+uint32_t get_alignment_of_object_size(int32_t size) {
+  if (positive_modulo(size, 8) == 0)
     return 8;
-  if (size % 4 == 0)
+  if (positive_modulo(size, 4) == 0)
     return 4;
-  if (size % 2 == 0)
+  if (positive_modulo(size, 2) == 0)
     return 2;
   return 1;
 }
-
-inline int positive_modulo(int i, int n) { return (i % n + n) % n; }
 
 PreservedAnalyses BPFDataAlignment::run(Function &F,
                                         FunctionAnalysisManager &FAM) {
@@ -144,10 +144,7 @@ PreservedAnalyses BPFDataAlignment::run(Function &F,
       APInt Offset(DL.getIndexSizeInBits(Ptr->getType()->getPointerAddressSpace()), 0,
         /* isSigned= */ true);
       if (GEP->accumulateConstantOffset(DL, Offset)) {
-        Alignment =
-            positive_modulo(Offset.getSExtValue() + PtrAlign, PTR_ALIGN);
-        if (*Alignment == 0)
-          Alignment = 8;
+        Alignment = get_alignment_of_object_size(Offset.getSExtValue() + PtrAlign);
       }
     }
     if (Alignment) {
@@ -161,13 +158,6 @@ PreservedAnalyses BPFDataAlignment::run(Function &F,
     }
   }
 
-  auto newAlign = [&](Value *Ptr, Type *Ty) -> std::optional<unsigned> {
-    if (!alignment_info.contains(Ptr)) return {};
-    auto Size = DL.getTypeAllocSize(Ty);
-    auto SizeAlign = get_alignment_of_object_size(Size);
-    return std::min(SizeAlign, alignment_info[Ptr]);
-  };
-
   // Now that we have seen all pointers to all
   // all allocated objects (throughs allocs, returned objects from functions,
   // etc) Go through all instructions, find the stores and the loads, and change
@@ -177,18 +167,20 @@ PreservedAnalyses BPFDataAlignment::run(Function &F,
     for (auto &I : BB) {
       if (auto *Load = dyn_cast<LoadInst>(&I)) {
         auto *Source = Load->getPointerOperand();
+        if (!alignment_info.contains(Source)) continue;
         uint32_t old_alignment = Load->getAlign().value();
-        auto new_alignment = newAlign(Source, Load->getType());
-        if (!new_alignment || *new_alignment <= old_alignment) continue;
-        Load->setAlignment(Align(*new_alignment));
-        outs() << "Promoted Alignment from " << old_alignment << " to " << *new_alignment << '\n';
+        auto new_alignment = alignment_info[Source];
+        if (new_alignment <= old_alignment) continue;
+        outs() << "Promoted Alignment from " << old_alignment << " to " << new_alignment << '\n';
+        Load->setAlignment(Align(new_alignment));
       } else if (auto *Store = dyn_cast<StoreInst>(&I)) {
         auto *Dest = Store->getPointerOperand();
+        if (!alignment_info.contains(Dest)) continue;
         uint32_t old_alignment = Store->getAlign().value(); 
-        auto new_alignment = newAlign(Dest, Store->getValueOperand()->getType());
-        if (!new_alignment || *new_alignment <= old_alignment) continue;
-        Store->setAlignment(Align(*new_alignment));
-        outs() << "Promoted Alignment from " << old_alignment << " to " << *new_alignment << '\n';
+        auto new_alignment = alignment_info[Dest];
+        if (new_alignment <= old_alignment) continue;
+        outs() << "Promoted Alignment from " << old_alignment << " to " << new_alignment << '\n';
+        Store->setAlignment(Align(new_alignment));
       } 
       // else if (auto *Call = dyn_cast<CallInst>(&I)) {
       //   // By default, we cannot detect that pointers in the memcpys are aligned
