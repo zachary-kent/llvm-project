@@ -1,2 +1,2 @@
 #!/bin/sh
-/home/otso/llvm-project/build/bin/clang -mllvm=-bpf-enable-fusion -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce "$@"
+/home/otso/llvm-project/build/bin/clang -mllvm=-bpf-enable-alias -mllvm=-bpf-enable-slp -mllvm=-bpf-enable-fusion -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce -mllvm=-bpf-enable-instrumentation "$@"

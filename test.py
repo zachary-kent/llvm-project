@@ -3,6 +3,7 @@
 #   "scapy",
 # ]
 # ///
+import sys
 import os
 import subprocess
 import argparse
@@ -27,6 +28,7 @@ def mk_packet(len):
   )
   return bytes(pkt).hex()
 
+data = mk_packet(100)
 SEC = "xdp"
 
 REPEAT=1
@@ -124,13 +126,13 @@ PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 # PIN_PATH = "/home/otso/llvm-project/xdp_bench_prog"
 # PROG_PATH = "build/bin/prog.o"
 
-parser = argparse.ArgumentParser(
-    description="CLI"
-)
+# parser = argparse.ArgumentParser(
+#     description="CLI"
+# )
 
-parser.add_argument("-i", dest="input",required=True)
+# parser.add_argument("-i", dest="input",required=True)
 
-args = parser.parse_args()
+# args = parser.parse_args()
 
 PROG_PATH = args.input
 

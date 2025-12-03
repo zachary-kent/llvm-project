@@ -1,4 +1,72 @@
+sudo bpftool prog show
+
+
+
+sudo bpftool prog profile pinned /sys/fs/bpf/xdp_bench_prog cycles instructions llc_misses
+
+
+sudo bpftool prog profile name hashfilter cycles
+
+
+
+
+Running suricata:
+
+
+Linux kernel bpf_stats_enabled
+
+
+// Run the program
+uv tset run
+//
+bpf prog
+
+
+Preliminary test:
+
+Example:
+With our opts:
+uv run test.py -i compiled_benchmarks/opt/suricata_xdp_filter.bpf
+
+- 16428425768 run_cnt 2000000000
+- 16372839504 run_cnt 2000000000
+- 16179436909 run_cnt 2000000000
+- 16311188267
+- 16307247121
+
+24.7782204265
+8.163450363499999
+
+
+No opts:
+uv run test.py -i compiled_benchmarks/no_opt/suricata_xdp_filter.bpf 
+
+- gpl run_time_ns 16450679530 run_cnt 2000000000
+- gpl run_time_ns 16447169591 run_cnt 2000000000
+16658591732 
+- 16493487181
+- 16466496216
+
+24.4903510905
+
+8.259406808833333
+
+https://github.com/xdp-project/xdp-tools?tab=readme-ov-file
+
+
+https://github.com/xdp-project/xdp-tools/tree/main/xdp-trafficgen
+
+
+
+
+
 # Location of custom llvm install: /home/otso/llvm_better
+
+Instrumentation places a dyn_inst_cnt global variable
+
+
+
+
 
 # Things to compile
 ## Katran
@@ -19,14 +87,12 @@ filter.bpf = ipv4_drop map
 
 - pinned-maps, map pinned under /sys/fs/bpf/suricata-eth3-ipv4_drop
 
-
 bpfctrl
 https://github.com/StamusNetworks/bpfctrl
 
 sudo bpfctrl -m /sys/fs/bpf/suricata-wlp4s0-ipv4_drop ipv4 --add 1.2.3.4=1
 
 cp ebpf/xdp_filter.bpf /usr/libexec/suricata/ebpf/
-
 
 How to actually do this?
 

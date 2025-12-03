@@ -8,7 +8,7 @@ TARGET_DIR="$1"
 
 cat << EOF > $SCRIPT_DIR/clang_opt
 #!/bin/sh
-$SCRIPT_DIR/build/bin/clang -mllvm=-bpf-enable-fusion -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce "\$@"
+$SCRIPT_DIR/build/bin/clang -mllvm=-bpf-enable-alias -mllvm=-bpf-enable-slp -mllvm=-bpf-enable-fusion -mllvm=-bpf-enable-const-prop -mllvm=-bpf-enable-dce -mllvm=-bpf-enable-instrumentation "\$@"
 EOF
 
 chmod +x $SCRIPT_DIR/clang_opt
