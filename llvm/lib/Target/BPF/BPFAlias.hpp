@@ -81,7 +81,6 @@ public:
   llvm::DenseMap<llvm::MachineInstr*, PointerInfo> PointerIn;
   bool conflict(const llvm::MachineInstr &MI1, const llvm::MachineInstr &MI2) const;
   std::optional<Pack> pack(const Pack &P1, const Pack &P2) const;
-  std::optional<Pack> pack(const llvm::MachineInstr &MI1, const llvm::MachineInstr &MI2) const;
-  const LatticeElement &getInfo(const llvm::MachineInstr &MI, llvm::MCRegister MCR) const;
-  LatticeElement getInfo(const llvm::MachineInstr &MI) const;
+  const LatticeElement &getInfo(const llvm::MachineInstr &MI, llvm::MCRegister MCR, const llvm::TargetRegisterInfo *TRI = nullptr) const;
+  LatticeElement getInfo(const llvm::MachineInstr &MI, const llvm::TargetRegisterInfo *TRI = nullptr) const;
 };

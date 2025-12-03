@@ -107,9 +107,10 @@ std::vector<unsigned> topologicalSort(const std::vector<BitVector> &G, const std
   BitVector Scheduled(V);
   std::vector<unsigned> Schedule;
   Schedule.reserve(V);
-  while (!Worklist.empty()) {
+  while (Worklist.any()) {
     // Pop a node from worklist
-    unsigned Next = Worklist.find_first();
+    int Next = Worklist.find_first();
+    assert(Next >= 0);
     Worklist.reset(Next);
     // Skip if already visited
     if (Scheduled[Next]) continue;
@@ -184,7 +185,7 @@ MCRegister regToSubReg(MCRegister MCR) {
 bool disjoint(const BitVector &BV1, const BitVector &BV2) {
   auto Inter = BV1;
   Inter &= BV2;
-  return Inter.empty();
+  return Inter.none();
 }
 
 namespace slp {
@@ -193,7 +194,7 @@ namespace slp {
     unsigned Offset;
     BitVector Dependents;
     BitVector Members;
-    Pack(unsigned First, unsigned Offset, BitVector Dependents) : First(First), Offset(Offset), Dependents(std::move(Dependents)) {
+    Pack(unsigned First, unsigned Offset, BitVector Dependents) : First(First), Offset(Offset), Dependents(std::move(Dependents)), Members(Dependents.size()) {
       Members.set(First);
     }
     bool operator<(const Pack &Other) const {
@@ -411,7 +412,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     for (size_t Region = 0; Region < NUM_REGIONS; Region++) {
       for (size_t Size = 0; Size < NUM_SIZES; Size++) {
         auto &SizedPacks = StoreImms[Region][Size];
-        BitVector Merged(SizedPacks.size());
+        BitVector Merged(N);
         // Merge packs of size 2^Size
         std::sort(SizedPacks.begin(), SizedPacks.end());
         for (auto &Lft : SizedPacks) {
@@ -488,7 +489,7 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     for (const auto *ECV : Packs) {
       if (!ECV->isLeader()) continue;
       unsigned Instr = ECV->getData();
-      if (getPackDependencies(Instr).empty()) {
+      if (getPackDependencies(Instr).none()) {
         ToSchedule.insert(Instr);
       }
     }
@@ -533,24 +534,27 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
           PackedSize += (1 << memorySize(*MI));
         }
         std::sort(pack.begin(), pack.end(), [&](const MachineInstr *MI1, const MachineInstr *MI2) {
-          return *AliasInfo.getInfo(*MI1).loc.offset < *AliasInfo.getInfo(*MI2).loc.offset;
+          return *AliasInfo.getInfo(*MI1, TRI).loc.offset < *AliasInfo.getInfo(*MI2, TRI).loc.offset;
         });
         auto PackedOpcode = StoreImmOpcode(PackedSize);
         int64_t PackedImm = 0;
         for (auto Itr = pack.rbegin(); Itr != pack.rend(); Itr++) {
           auto *MI = *Itr;
           PackedImm <<= (1 << memorySize(*MI)) * 8;
-          PackedImm |= MI->getOperand(2).getImm();
+          PackedImm |= MI->getOperand(0).getImm();
         }
+        std::bitset<32> set = PackedImm;
+        std::cout << set << '\n';
         auto *Base = pack.front();
         DebugLoc DL;
         const auto *TII = TSI.getInstrInfo();
-        return BuildMI(MBB, MBB.end(), DL, TII->get(PackedOpcode))
+        BuildMI(MBB, MBB.end(), DL, TII->get(PackedOpcode))
           .addImm(PackedImm)
           .addReg(Base->getOperand(1).getReg().asMCReg())
           .addImm(Base->getOperand(2).getImm());
       }
     }
+    outs() << "==========================\n";
   }
   return true;
 } 

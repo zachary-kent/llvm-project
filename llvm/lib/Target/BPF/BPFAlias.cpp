@@ -405,18 +405,19 @@ std::optional<Pack> BPFAlias::pack(const Pack &P1, const Pack &P2) const {
   return Merged;
 }
 
-LatticeElement BPFAlias::getInfo(const llvm::MachineInstr &MI) const {
+LatticeElement BPFAlias::getInfo(const MachineInstr &MI, const TargetRegisterInfo *TRI) const {
   assert(MI.getOperand(1).isReg());
   assert(MI.getOperand(2).isImm());
   auto Base = MI.getOperand(1).getReg().asMCReg();
   auto Off = MI.getOperand(2).getImm();
-  auto LE = getInfo(MI, Base);
+  auto LE = getInfo(MI, Base, TRI);
   LE.addOffset(Off);
   return LE;
 }
 
-const LatticeElement &BPFAlias::getInfo(const llvm::MachineInstr &MI, llvm::MCRegister MCR) const {
-  const auto *TRI = MI.getParent()->getParent()->getSubtarget().getRegisterInfo();
+const LatticeElement &BPFAlias::getInfo(const MachineInstr &MI, MCRegister MCR, const TargetRegisterInfo *TRI) const {
+  if (!TRI)
+    TRI = MI.getParent()->getParent()->getSubtarget().getRegisterInfo();
   const auto &PtrInfo = PointerIn.at(&MI);
   return PtrInfo.at(TRI->getEncodingValue(subRegToReg(MCR)));
 }
