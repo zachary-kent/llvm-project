@@ -14,7 +14,7 @@ using namespace llvm;
 
 namespace {
 
-#define BPF_COUNT_PASS_NAME "BPF Instrumentation"
+#define BPF_COUNT_PASS_NAME "BPF Instruction count"
 
 class BPFCount : public MachineFunctionPass {
 public:
@@ -42,7 +42,8 @@ bool BPFCount::runOnMachineFunction(MachineFunction &MF) {
       }
     }
   }
-  outs() << count << "Instructions\n";
+  outs() << count << " Instructions\n";
+  return false;
 }
 
 

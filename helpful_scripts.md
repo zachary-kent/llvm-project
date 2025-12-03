@@ -1,3 +1,6 @@
+./build/llvm/bin/clang -S -g -target bpf -O2 -emit-llvm prog.c -o bench/baseline/prog.ll
+./build/llvm/bin/llc -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-dce -bpf-enable-slp -bpf-enable-count bench/opt/prog.bc -o bench/opt/prog.o
+
 Running IR passes with OPT
 
 Go to root directory, run
