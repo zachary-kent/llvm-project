@@ -96,6 +96,8 @@ def load_prog(prog_path, pin_path):
     pin_path,
   ])
 
+  print("LOADED PROGRAM")
+
 PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 
 os.makedirs(os.path.dirname(PIN_PATH), exist_ok=True)

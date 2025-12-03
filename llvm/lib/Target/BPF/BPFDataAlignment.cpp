@@ -265,6 +265,39 @@ PreservedAnalyses BPFDataAlignment::run(Function &F, FunctionAnalysisManager &FA
           store->setAlignment(Align(new_alignment));
           outs() << "Setting alignment." << *store << "Old: " << old_alignment << " New: "  << new_alignment << "\n";
         }
+      } else if (auto* call = dyn_cast<CallInst>(&I)){
+        // By default, we cannot detect that pointers in the memcpys are aligned
+        // But in reality they are and it is used commonly in the things we are using
+        //  call void @llvm.memcpy.p0.p0.i64(ptr noundef nonnull align 4 dereferenceable(16) 
+        //  They really should be aligned to 8
+        auto called_function = call->getCalledFunction();
+        if(called_function) {
+          if(called_function->getName().starts_with("llvm.memcpy.p0.p0.i64")) {
+            auto arg0 = call->getOperand(0);
+            auto arg1 = call->getOperand(1);
+
+            auto arg0_ptr_info = alignment_info[arg0];
+            auto arg1_ptr_info = alignment_info[arg1];
+
+
+            uint32_t arg0_new_alignment = generate_new_alignment(arg0_ptr_info, 1);
+            uint32_t arg1_new_alignment = generate_new_alignment(arg1_ptr_info, 1);
+
+            // Replace the original alignment of these attributes with these new values
+            // This changes it AT THE FUNCTION (not the callsite).
+            auto al = call->getAttributes();
+            al = al.removeAttributeAtIndex(F.getContext(), 1, Attribute::Alignment);
+            al = al.removeAttributeAtIndex(F.getContext(), 2, Attribute::Alignment);
+
+            Attribute at = Attribute::get(F.getContext(), Attribute::Alignment, arg0_new_alignment);
+            al = al.addAttributeAtIndex(F.getContext(), 1, at);
+
+            at = Attribute::get(F.getContext(), Attribute::Alignment, arg1_new_alignment);
+            al = al.addAttributeAtIndex(F.getContext(), 2, at);
+
+            call->setAttributes(al);
+          }
+        }
       }
     }
   }

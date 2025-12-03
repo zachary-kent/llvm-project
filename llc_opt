@@ -1,0 +1,2 @@
+#!/bin/sh
+/home/otso/llvm-project/build/bin/llc -bpf-enable-alias -bpf-enable-alignment -bpf-enable-slp -bpf-enable-fusion -bpf-enable-const-prop -bpf-enable-dce "$@"

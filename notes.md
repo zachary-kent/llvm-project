@@ -18,3 +18,27 @@ __builtin_memcpy
 196:       7b 3a e0 ff 00 00 00 00 *(u64 *)(r10 - 0x20) = r3 
 
 This COULD instead be a single 64-bit read and write
+
+
+
+Alignment working:
+
+Suricata: xdp_hashfilter
+
+Original:
+6:       71 81 0c 00 00 00 00 00 w1 = *(u8 *)(r8 + 0xc)
+7:       71 82 0d 00 00 00 00 00 w2 = *(u8 *)(r8 + 0xd)
+8:       64 02 00 00 08 00 00 00 w2 <<= 0x8
+9:       4c 12 00 00 00 00 00 00 w2 |= w1
+
+New
+
+6:       69 82 0c 00 00 00 00 00 w2 = *(u16 *)(r8 + 0xc) 
+
+
+This reduces verifier load and results in better instruction selectios. Additionally, less memory access reduces load on the cache hierachy.
+
+
+Suricata xdp_filter.bpf from 306 to 283 instructions
+
+
