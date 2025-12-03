@@ -14,6 +14,7 @@
 
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/EquivalenceClasses.h"
 
 #include <array>
 #include <algorithm>
@@ -24,8 +25,6 @@ using namespace llvm;
 #define BPF_SLP_PASS_NAME "BPF SLP"
 
 namespace {
-
-constexpr unsigned NUM_DEPS = 10;
 
 class BPFSLP : public MachineFunctionPass {
 public:
@@ -51,11 +50,6 @@ private:
 
 char BPFSLP::ID = 0;
 
-constexpr std::array<MCRegister, NUM_BPF_REGS> BPF_REGS {
-  BPF::R0, BPF::R1, BPF::R2, BPF::R3, BPF::R4, BPF::R5, 
-  BPF::R6, BPF::R7, BPF::R8, BPF::R9, BPF::R10, BPF::R11
-};
-
 template<typename T, unsigned N>
 void printSet(const SmallPtrSet<T*, N> &Set) {
   outs() << '[';
@@ -74,15 +68,15 @@ void BPFSLP::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 void BPFSLP::dumpBasicBlock(const MachineBasicBlock &MBB) const {
-  for (const auto &MI : MBB) {
-    if (MI.isDebugOrPseudoInstr() || MI.isMetaInstruction()) continue;
-    outs() << MI << ": ";
-    if (dependencies.contains(&MI))
-      printSet(dependencies.at(&MI));
-    else
-      outs() << "Has no deps";
-    outs() << '\n';
-  }
+  // for (const auto &MI : MBB) {
+  //   if (MI.isDebugOrPseudoInstr() || MI.isMetaInstruction()) continue;
+  //   outs() << MI << ": ";
+  //   if (dependencies.contains(&MI))
+  //     printSet(dependencies.at(&MI));
+  //   else
+  //     outs() << "Has no deps";
+  //   outs() << '\n';
+  // }
 }
 
 unsigned StoreImmOpcode(unsigned Size) {
@@ -100,28 +94,6 @@ unsigned StoreImmOpcode(unsigned Size) {
       std::abort();
     }
   }
-}
-
-using Pack = SmallVector<MachineInstr *>;
-
-MachineInstr *createPackedInstr(MachineBasicBlock &MBB, const Pack &pack) {
-  assert(!pack.empty() && "Got empty pack");
-  auto *First = pack.front();
-  unsigned Size = memorySize(*First);
-  unsigned PackedSize = pack.size() * Size;
-  assert(PackedSize <= 8 && "Pack too large");
-  auto *TII = MBB.getParent()->getSubtarget().getInstrInfo();
-  auto PackedOpcode = StoreImmOpcode(PackedSize);
-  int64_t PackedImm = 0;
-  for (auto Itr = pack.rbegin(); Itr != pack.rend(); Itr++) {
-    PackedImm <<= Size * 8;
-    PackedImm |= (*Itr)->getOperand(2).getImm();
-  }
-  DebugLoc DL;
-  return BuildMI(MBB, MBB.end(), DL, TII->get(PackedOpcode))
-    .addImm(PackedImm)
-    .addReg(First->getOperand(1).getReg().asMCReg())
-    .addImm(First->getOperand(2).getImm());
 }
 
 std::vector<unsigned> topologicalSort(const std::vector<BitVector> &G, const std::vector<BitVector> &Transpose) {
@@ -209,6 +181,128 @@ MCRegister regToSubReg(MCRegister MCR) {
   }
 }
 
+bool disjoint(const BitVector &BV1, const BitVector &BV2) {
+  auto Inter = BV1;
+  Inter &= BV2;
+  return Inter.empty();
+}
+
+namespace slp {
+  struct Pack {
+    unsigned First;
+    unsigned Offset;
+    BitVector Dependents;
+    BitVector Members;
+    Pack(unsigned First, unsigned Offset, BitVector Dependents) : First(First), Offset(Offset), Dependents(std::move(Dependents)) {
+      Members.set(First);
+    }
+    bool operator<(const Pack &Other) const {
+      return Offset < Other.Offset;
+    }
+    bool merge(const Pack &Rht) {
+      if (!disjoint(Dependents, Rht.Members) || !disjoint(Rht.Dependents, Members))
+        return false;
+      Dependents |= Rht.Dependents;
+      Members |= Rht.Members;
+      return true;
+    }
+  };
+}
+
+static bool isStoreImm(unsigned Opcode) {
+  return Opcode == BPF::STB_imm || Opcode == BPF::STH_imm ||
+         Opcode == BPF::STW_imm || Opcode == BPF::STD_imm;
+}
+
+static bool isStore32(unsigned Opcode) {
+  return Opcode == BPF::STB32 || Opcode == BPF::STH32 || Opcode == BPF::STW32 ||
+         Opcode == BPF::STBREL32 || Opcode == BPF::STHREL32 ||
+         Opcode == BPF::STWREL32;
+}
+
+static bool isStore64(unsigned Opcode) {
+  return Opcode == BPF::STB || Opcode == BPF::STH || Opcode == BPF::STW ||
+         Opcode == BPF::STD || Opcode == BPF::STDREL;
+}
+
+static bool isStoreInst(unsigned Opcode) {
+  return isStoreImm(Opcode) || isStore32(Opcode) || isStore64(Opcode);
+}
+
+static bool isLoad32(unsigned Opcode) {
+  return Opcode == BPF::LDB32 || Opcode == BPF::LDH32 || Opcode == BPF::LDW32 ||
+         Opcode == BPF::LDBACQ32 || Opcode == BPF::LDHACQ32 ||
+         Opcode == BPF::LDWACQ32;
+}
+
+static bool isLoad64(unsigned Opcode) {
+  return Opcode == BPF::LDB || Opcode == BPF::LDH || Opcode == BPF::LDW ||
+         Opcode == BPF::LDD || Opcode == BPF::LDDACQ;
+}
+
+unsigned memorySize(unsigned Opcode) {
+  switch (Opcode) {
+    // Store byte
+    case BPF::STB: case BPF::STB_imm: case BPF::STB32: case BPF::STBREL32:
+    // Load byte
+    case BPF::LDB: case BPF::LDB32: case BPF::LDBACQ32: case BPF::LD_ABS_B: case BPF::LD_IND_B:
+      return 0;
+    // Store half-word
+    case BPF::STH: case BPF::STH_imm: case BPF::STH32: case BPF::STHREL32:
+    // Load half-word
+    case BPF::LDH: case BPF::LDH32: case BPF::LDHACQ32: case BPF::LD_ABS_H: case BPF::LD_IND_H:
+      return 1;
+    // Store word
+    case BPF::STW: case BPF::STW_imm: case BPF::STW32: case BPF::STWREL32:
+    // Load word
+    case BPF::LDW: case BPF::LDW32: case BPF::LDWACQ32: case BPF::LD_ABS_W: case BPF::LD_IND_W:
+      return 2;
+    // Store double-word
+    case BPF::STD: case BPF::STD_imm:
+    // Load double-word
+    case BPF::LDD: case BPF::LDDACQ:
+      return 3;
+    default: {
+      errs() << "Unknown opcode " << Opcode << '\n';
+      std::abort();
+    }
+  }
+}
+
+unsigned memorySize(const MachineInstr &MI) {
+  return memorySize(MI.getOpcode());
+}
+
+static bool isLoadSext(unsigned Opcode) {
+  return Opcode == BPF::LDBSX || Opcode == BPF::LDHSX || Opcode == BPF::LDWSX;
+}
+
+bool isLoadInst(unsigned Opcode) {
+  return isLoad32(Opcode) || isLoad64(Opcode) || isLoadSext(Opcode);
+}
+
+bool isLoadInst(const MachineInstr &MI) {
+  return isLoadInst(MI.getOpcode());
+}
+
+bool isStoreInst(const MachineInstr &MI) {
+  return isStoreInst(MI.getOpcode());
+}
+
+bool isMemInst(unsigned Opcode) {
+  return isLoadInst(Opcode) || isStoreInst(Opcode);
+}
+
+bool isMemInst(const MachineInstr &MI) {
+  return isMemInst(MI.getOpcode());
+}
+
+bool isSubset(const BitVector &A, const BitVector &B) {
+  auto Copy = A;
+  Copy &= B;
+  return Copy == A;
+}
+
 bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
   auto &AliasInfo = getAnalysis<BPFAlias>();
 
@@ -216,19 +310,24 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
   const auto *TRI = TSI.getRegisterInfo();
 
   for (auto &MBB : MF) {
-    DenseMap<MachineBasicBlock *, unsigned> BBIndex;
-    unsigned i = 0;
-    for (auto &MBB : MF) {
-      BBIndex[&MBB] = i++;
+    DenseMap<MachineInstr *, unsigned> InstrIndex;
+    std::vector<MachineInstr *> Instrs;
+    Instrs.reserve(MBB.size());
+    {
+      unsigned i = 0;
+      for (auto &MI : MBB) {
+        InstrIndex[&MI] = i++;
+        Instrs.push_back(&MI);
+      }
     }
     const unsigned N = MBB.size();
     std::vector<BitVector> dependencies(N, BitVector(N));
     std::vector<BitVector> dependents(N, BitVector(N));
-    MBB.dump();
+    // MBB.dump();
     unsigned OuterIdx = 0;
     for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
       auto &MI1 = *OuterItr;
-      unsigned InnerIdx = 0;
+      unsigned InnerIdx = OuterIdx + 1;
       for (auto InnerItr = std::next(OuterItr); InnerItr != MBB.end(); InnerItr++) {
         // Iterate over all instructions after this one
         auto &MI2 = *InnerItr;
@@ -263,7 +362,6 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
         unsigned InnerIdx = 0;
         for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
           // Iterate over all instructions before this instruction
-          auto &MI2 = *InnerItr;
           dependents[InnerIdx].set(OuterIdx);
           dependencies[OuterIdx].set(InnerIdx);
           InnerIdx++;
@@ -272,7 +370,6 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
         unsigned InnerIdx = 0;
         for (auto InnerItr = MBB.begin(); InnerItr != OuterItr; InnerItr++) {
           // Iterate over all instructions before this instruction
-          auto &MI2 = *InnerItr;
           for (auto &Use : OuterItr->all_uses()) {
             if (Use.isReg()) {
               auto UseReg = Use.getReg().asMCReg();
@@ -288,9 +385,70 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
       }
       OuterIdx++;
     }
-    using Pack = SmallVector<MachineInstr *>;
-    DenseMap<MachineInstr*, Pack> packs;
+    EquivalenceClasses<unsigned> Packs;
+    constexpr size_t NUM_SIZES = 3;
+    constexpr size_t NUM_REGIONS = 4;
+    auto transitiveDependencies = transitiveClosure(dependencies, dependents);
+    auto transitiveDependents = transitiveClosure(dependents, dependencies);
+    std::array<std::array<std::vector<slp::Pack>, NUM_SIZES>, NUM_REGIONS> StoreImms;
+    {
+      unsigned i = 0;
+      for (auto &MI : MBB) {
+        Packs.insert(i);
+        // Only try to pack store-immediates
+        if (isStoreImm(MI.getOpcode())) {
+          auto LE = AliasInfo.getInfo(MI);
+          // Only pack stores to known locations
+          if (LE.level == LatticeElement::Level::Pointer && LE.loc.offset) {
+            unsigned Size = memorySize(MI);
+            StoreImms[static_cast<size_t>(LE.loc.region)][Size].emplace_back(i, *LE.loc.offset, transitiveDependents[i]);
+          }
+        }
+        ++i;
+      }
+    }
     bool DidPack = false;
+    for (size_t Region = 0; Region < NUM_REGIONS; Region++) {
+      for (size_t Size = 0; Size < NUM_SIZES; Size++) {
+        auto &SizedPacks = StoreImms[Region][Size];
+        BitVector Merged(SizedPacks.size());
+        // Merge packs of size 2^Size
+        std::sort(SizedPacks.begin(), SizedPacks.end());
+        for (auto &Lft : SizedPacks) {
+          if (Merged[Lft.First])
+            // Already merged this pack
+            continue;
+          // Beginning offset of adjacent operation
+          unsigned AdjOff = Lft.Offset + (1 << Size);
+          auto lb = std::lower_bound(SizedPacks.begin(), SizedPacks.end(), AdjOff, 
+            [](const slp::Pack &P, unsigned Off) {
+              return P.Offset < Off;
+          });
+          for (auto I = std::move(lb); I != SizedPacks.end(); I++) {
+            auto &Rht = *I;
+            if (Rht.Offset > AdjOff)
+              // Not adjacent
+              break;
+            if (Merged[Rht.First])
+              // Already merged this pack
+              continue;
+            if (Lft.merge(Rht)) {
+              DidPack = true;
+              // Successful merge
+              Merged.set(Lft.First);
+              Merged.set(Rht.First);
+              Packs.unionSets(Lft.First, Rht.First);
+              // Add merged pack to next level
+              StoreImms[Region][Size + 1].push_back(std::move(Lft));
+              break;
+            }   
+          }
+        }
+      }
+    }
+    if (!DidPack)
+      continue;
+    // DenseMap<MachineInstr*, Pack> packs;
     // New Approach
     // Maintain mapping from instructions to dependencies
     // Maintain mapping from region -> size -> instructions
@@ -309,116 +467,93 @@ bool BPFSLP::runOnMachineFunction(MachineFunction &MF) {
     //          if `DoPack`
     //            pack together `pack` and `pack'
     //            Add `pack` to 2^(i + 1)
-    //             
-    //        let `pack'` be the pack with offset equal to `pack.offset` + 2^i
-    //        Merge `pack
-    for (auto OuterItr = MBB.begin(); OuterItr != MBB.end(); OuterItr++) {
-      auto &MI1 = *OuterItr;
-      auto [Itr, Succeed] = packs.try_emplace(&MI1, SmallVector{&MI1});
-      if (!Succeed)
-        // Already packed this instruction
-        continue;
-      // singleton pack
-      auto &pack = Itr->second;
-      for (auto InnerItr = std::next(OuterItr); InnerItr != MBB.end(); InnerItr++) {
-        auto &MI2 = *InnerItr;
-        if (packs.contains(&MI2))
-          // Already packed this instruction
-          continue;
-        if (dependencies[&MI1].contains(&MI2) || dependencies[&MI2].contains(&MI1))
-          // don't pack if not independent
-          continue;
-        if (AliasInfo.packable(MI1, MI2)) {
-          DidPack = true;
-          pack.push_back(&MI2);
-          std::sort(pack.begin(), pack.end(), [&](MachineInstr *MI1, MachineInstr *MI2) -> bool {
-             
-          });
-          packs[&MI2] = {&MI1, &MI2};
-          break;
-        } 
+
+    auto getPackDependencies = [&](unsigned Instr) {
+      BitVector PackDependencies(N);
+      for (unsigned Member : Packs.members(Instr)) {
+        PackDependencies |= dependencies[Member];
+      }
+      return PackDependencies;
+    };
+
+    auto getPackDependents = [&](unsigned Instr) {
+      BitVector PackDependents(N);
+      for (unsigned Member : Packs.members(Instr)) {
+        PackDependents |= dependents[Member];
+      }
+      return PackDependents;
+    };
+
+    SetVector<unsigned> ToSchedule;
+    for (const auto *ECV : Packs) {
+      if (!ECV->isLeader()) continue;
+      unsigned Instr = ECV->getData();
+      if (getPackDependencies(Instr).empty()) {
+        ToSchedule.insert(Instr);
       }
     }
-    if (!DidPack)
-      continue;
-    auto getPackDependencies = [&](const Pack &pack) {
-      return
-        pack 
-        | std::views::transform([&](MachineInstr *MI) -> std::vector<MachineInstr*> { 
-            return { dependencies[MI].begin(), dependencies[MI].end() };
-          })
-        | std::views::join
-        | std::views::transform([&](MachineInstr *MI) { return packs[MI]; });
-    };
-    auto getPackDependents = [&](const Pack &pack) {
-      return
-        pack 
-        | std::views::transform([&](MachineInstr *MI) -> std::vector<MachineInstr*> { 
-            return { dependents[MI].begin(), dependents[MI].end() };
-          })
-        | std::views::join
-        | std::views::transform([&](MachineInstr *MI) { return packs[MI]; });
-    };
-    SetVector<Pack> ToSchedule;
-    for (auto &[_, pack] : packs) {
-      auto deps = getPackDependencies(pack);
-      if (deps.begin() == deps.end()) {
-        // No deps
-        ToSchedule.insert(pack);
-      }
-    }
-    SetVector<Pack> Schedule;
+    std::vector<unsigned> Schedule;
+    BitVector Scheduled(N);
     while (!ToSchedule.empty()) {
-      auto pack = ToSchedule.pop_back_val();
-      auto deps = getPackDependencies(pack);
-      if (std::ranges::all_of(deps, [&](Pack pack) {
-        return Schedule.contains(pack);
-      })) {
-        // Every dependency of the pack has been scheduled
-        for (Pack Dependent : getPackDependents(pack)) {
-          // Check if all dependents of this pack can now be scheduled
-          ToSchedule.insert(std::move(Dependent));
+      unsigned Leader = ToSchedule.pop_back_val();
+      if (Scheduled[Leader])
+        // Already scheduled this pack
+        continue;
+      auto Deps = getPackDependencies(Leader);
+      if (isSubset(Deps, Scheduled)) {
+        // All deps have been scheduled
+        for (unsigned Dependent : getPackDependents(Leader).set_bits()) {
+          // Try to schedule all dependents
+          ToSchedule.insert(Packs.getLeaderValue(Dependent));
         }
-        // Schedule this pack
-        Schedule.insert(std::move(pack));
+        // Schedule this instruction
+        Schedule.push_back(Leader);
+        Scheduled.set(Leader);
       }
     }
     // Clear basic block to insert new schedule
     for (auto Itr = MBB.begin(); Itr != MBB.end(); ) {
       (Itr++)->removeFromParent();
     }
-    // for (auto &MI : MBB) {
-      // MI.removeFromParent();
-    // }
-    DenseSet<MachineInstr *> scheduled;
-    for (auto pack : Schedule) {
-      assert(!pack.empty() && "Empty pack encountered");
-      if (pack.size() == 1) {
-        assert(!scheduled.contains(pack.front()));
-        scheduled.insert(pack.front());
+
+    for (unsigned Leader : Schedule) {
+      auto Range = Packs.members(Leader);
+      ptrdiff_t NumPacked = std::distance(Range.begin(), Range.end());
+      // auto *MI = Instrs[Leader];
+      if (NumPacked == 1) {
         // Singleton pack
         // Emit same instruction
-        MBB.insert(MBB.end(), pack.front());
+        MBB.insert(MBB.end(), Instrs[Leader]);
       } else {
-        createPackedInstr(MBB, pack);
-        // Emit new packed instruction
+        unsigned PackedSize = 0;
+        SmallVector<MachineInstr *> pack;
+        for (unsigned Instr : Range) {
+          auto *MI = Instrs[Instr];
+          pack.push_back(MI);
+          PackedSize += (1 << memorySize(*MI));
+        }
+        std::sort(pack.begin(), pack.end(), [&](const MachineInstr *MI1, const MachineInstr *MI2) {
+          return *AliasInfo.getInfo(*MI1).loc.offset < *AliasInfo.getInfo(*MI2).loc.offset;
+        });
+        auto PackedOpcode = StoreImmOpcode(PackedSize);
+        int64_t PackedImm = 0;
+        for (auto Itr = pack.rbegin(); Itr != pack.rend(); Itr++) {
+          auto *MI = *Itr;
+          PackedImm <<= (1 << memorySize(*MI)) * 8;
+          PackedImm |= MI->getOperand(2).getImm();
+        }
+        auto *Base = pack.front();
+        DebugLoc DL;
+        const auto *TII = TSI.getInstrInfo();
+        return BuildMI(MBB, MBB.end(), DL, TII->get(PackedOpcode))
+          .addImm(PackedImm)
+          .addReg(Base->getOperand(1).getReg().asMCReg())
+          .addImm(Base->getOperand(2).getImm());
       }
     }
-    MBB.dump();
-    // if (std::all_of(pack.begin(), pack.end(), 
-    // std::all_of(Deps.begin(), Deps.end(), [&](MachineInstr *Dep) {
-    //   return Schedule.contains(Dep);
-    // })) {
-    //   // All dependencies of this instruction have been scheduled
-    //   Schedule.insert()
-    // }
-    }
-    return true;
   }
-  // for (auto &MBB : MF) {
-  //   dumpBasicBlock(MBB);
-  //   outs() << "=====================================\n";
-  // }
+  return true;
+} 
 
 } // end of anonymous namespace
 

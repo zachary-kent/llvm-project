@@ -405,48 +405,6 @@ std::optional<Pack> BPFAlias::pack(const Pack &P1, const Pack &P2) const {
   return Merged;
 }
 
-std::optional<SmallVector<MachineInstr *>> BPFAlias::pack(const MachineInstr &MI1, const MachineInstr &MI2) const {
-  if (!isStoreImm(MI1.getOpcode()) || !isStoreImm(MI2.getOpcode()))
-    // Only pack store immediates
-    return {};
-  // Initially, every store imm in its own pack
-  // Repeat until convergence:
-  //  Merge adjacent, independent packs of same size to create new pack
-  //  When merge, ensure that does not introduce circular dep
-  //  Maintain mapping from instruction to pack
-  // Schedule:
-  //  Add to worklist all packs and instrs with no deps
-  //  Repeat while worklist non-empty:
-  //    let I = pop(worklist)
-  //    if all deps of I have been scheduled:
-  //      schedule I
-  //      add all dependents of I to worklist
-  //  Ensure no circular dependencies among packs
-  // First find adjacent store imms of same size, create Pairs
-  // Keep track of which instructions have been packed
-  // Repeatedly merge packs of same size
-  // 
-  unsigned Size1 = memorySize(MI1);
-  unsigned Size2 = memorySize(MI2);
-  if (Size1 != Size2 || Size1 == 8)
-    // Only pack stores of same size that are not already double word
-    return {};
-
-  auto LE1 = getInfo(MI1);
-  auto LE2 = getInfo(MI2);
-  // Only pack adjacent stores of same size
-  if (LE1.adjacent(LE2, Size1, Size2)) {
-    SmallVector pack{&MI1, &MI2};
-    
-    std::sort(pack.begin(), pack.end(), [&](MachineInstr *I1, MachineInstr *I2) {
-      return *getInfo(*I1).loc.offset < *getInfo
-    });
-    return pack;
-  } else {
-    return {};
-  }
-}
-
 LatticeElement BPFAlias::getInfo(const llvm::MachineInstr &MI) const {
   assert(MI.getOperand(1).isReg());
   assert(MI.getOperand(2).isImm());
