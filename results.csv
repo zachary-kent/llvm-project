@@ -1,0 +1,9 @@
+File,Baseline,Full,-SLP,-SLP-Fusion,-SLP-Fusion-Align,-All
+filter,37,34,34,37,37,37
+xdp_filter,297,277,277,291,294,297
+vlan_filter,8,8,8,8,8,8
+xdp_lb,345,335,335,335,341,345
+xdp_filter.opt,288,277,277,277,277,288
+prog,44,34,38,38,41,44
+tunnel,258,237,240,243,248,258
+TOTAL,1277,1202,1209,1229,1246,1277

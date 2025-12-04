@@ -9,6 +9,9 @@ BASELINE_DIR="bench/baseline/suricata"
 OPT_DIR="bench/opt/suricata"
 ABLATION_DIR="bench/ablation/suricata"
 
+# Additional single files to process
+SINGLE_FILES=("prog.c" "tunnel.ll")
+
 # Create output directories
 mkdir -p "$OPT_DIR" "$ABLATION_DIR"
 
@@ -40,7 +43,7 @@ if [ ! -d "$BASELINE_DIR" ]; then
     exit 1
 fi
 
-# Find all .ll files
+# Find all .ll files in Suricata directory
 LL_FILES=$(find "$BASELINE_DIR" -name "*.ll" -type f)
 
 if [ -z "$LL_FILES" ]; then
@@ -48,85 +51,78 @@ if [ -z "$LL_FILES" ]; then
     exit 1
 fi
 
+# Add single files to the list
+for SINGLE_FILE in "${SINGLE_FILES[@]}"; do
+    if [ -f "$SINGLE_FILE" ]; then
+        LL_FILES="$LL_FILES $SINGLE_FILE"
+    else
+        echo "Warning: $SINGLE_FILE not found, skipping..."
+    fi
+done
+
 # Arrays to store results
 declare -A BASELINE_COUNTS
 declare -A FULL_COUNTS
-declare -A NO_IR_COUNTS
-declare -A NO_ALIGN_COUNTS
-declare -A NO_FUSION_COUNTS
-declare -A NO_CPROP_COUNTS
-declare -A NO_DCE_COUNTS
 declare -A NO_SLP_COUNTS
+declare -A NO_SLP_FUSION_COUNTS
+declare -A NO_SLP_FUSION_ALIGN_COUNTS
+declare -A NO_ALL_COUNTS
 
 # Process each file
 for LL_FILE in $LL_FILES; do
     # Get just the filename without path and extension
-    FILENAME=$(basename "$LL_FILE" .ll)
+    FILENAME=$(basename "$LL_FILE")
+    FILENAME_BASE="${FILENAME%.*}"
     
     echo "Processing $FILENAME..."
     
+    # For .c files, compile to .ll first
+    if [[ "$LL_FILE" == *.c ]]; then
+        $CLANG -target bpf -O2 -emit-llvm -S -o "${ABLATION_DIR}/${FILENAME_BASE}.ll" "$LL_FILE"
+        LL_FILE="${ABLATION_DIR}/${FILENAME_BASE}.ll"
+    fi
+    
     # Baseline: no optimizations
-    $LLC -march=bpf -filetype=obj -bpf-enable-count "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME}_baseline.o" 2>&1 | tee /tmp/baseline_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/baseline_${FILENAME}.txt | extract_count)
+    $LLC -march=bpf -filetype=obj -bpf-enable-count "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME_BASE}_baseline.o" 2>&1 | tee /tmp/baseline_${FILENAME_BASE}.txt > /dev/null
+    COUNT=$(cat /tmp/baseline_${FILENAME_BASE}.txt | extract_count)
     [ -z "$COUNT" ] && COUNT=0
-    BASELINE_COUNTS[$FILENAME]=$COUNT
+    BASELINE_COUNTS[$FILENAME_BASE]=$COUNT
     
     # Full optimizations
     $OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
-        "$LL_FILE" -o "${OPT_DIR}/${FILENAME}.bc" 2>&1 > /dev/null
-    $LLC -march=bpf -filetype=obj $LLC_PASSES "${OPT_DIR}/${FILENAME}.bc" -o "${OPT_DIR}/${FILENAME}.o" 2>&1 | tee /tmp/full_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/full_${FILENAME}.txt | extract_count)
+        "$LL_FILE" -o "${OPT_DIR}/${FILENAME_BASE}.bc" 2>&1 > /dev/null
+    $LLC -march=bpf -filetype=obj $LLC_PASSES "${OPT_DIR}/${FILENAME_BASE}.bc" -o "${OPT_DIR}/${FILENAME_BASE}.o" 2>&1 | tee /tmp/full_${FILENAME_BASE}.txt > /dev/null
+    COUNT=$(cat /tmp/full_${FILENAME_BASE}.txt | extract_count)
     [ -z "$COUNT" ] && COUNT=0
-    FULL_COUNTS[$FILENAME]=$COUNT
+    FULL_COUNTS[$FILENAME_BASE]=$COUNT
     
-    # No IR passes
-    $LLC -march=bpf -filetype=obj $LLC_PASSES "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME}_no_ir.o" 2>&1 | tee /tmp/no_ir_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/no_ir_${FILENAME}.txt | extract_count)
-    [ -z "$COUNT" ] && COUNT=0
-    NO_IR_COUNTS[$FILENAME]=$COUNT
-    
-    # No alignment
-    $OPT -load-pass-plugin="$FUSION_PLUGIN" -passes="bpffusion" \
-        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME}_no_align.bc" 2>&1 > /dev/null
-    $LLC -march=bpf -filetype=obj $LLC_PASSES "${ABLATION_DIR}/${FILENAME}_no_align.bc" -o "${ABLATION_DIR}/${FILENAME}_no_align.o" 2>&1 | tee /tmp/no_align_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/no_align_${FILENAME}.txt | extract_count)
-    [ -z "$COUNT" ] && COUNT=0
-    NO_ALIGN_COUNTS[$FILENAME]=$COUNT
-    
-    # No fusion
-    $OPT -load-pass-plugin="$ALIGN_PLUGIN" -passes="bpfalign" \
-        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME}_no_fusion.bc" 2>&1 > /dev/null
-    $LLC -march=bpf -filetype=obj $LLC_PASSES "${ABLATION_DIR}/${FILENAME}_no_fusion.bc" -o "${ABLATION_DIR}/${FILENAME}_no_fusion.o" 2>&1 | tee /tmp/no_fusion_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/no_fusion_${FILENAME}.txt | extract_count)
-    [ -z "$COUNT" ] && COUNT=0
-    NO_FUSION_COUNTS[$FILENAME]=$COUNT
-    
-    # No const-prop
+    # Remove SLP (keep Fusion, Alignment, CP, DCE)
     $OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
-        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME}_no_cprop.bc" 2>&1 > /dev/null
-    $LLC -march=bpf -filetype=obj -bpf-enable-dce -bpf-enable-slp -bpf-enable-count \
-        "${ABLATION_DIR}/${FILENAME}_no_cprop.bc" -o "${ABLATION_DIR}/${FILENAME}_no_cprop.o" 2>&1 | tee /tmp/no_cprop_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/no_cprop_${FILENAME}.txt | extract_count)
-    [ -z "$COUNT" ] && COUNT=0
-    NO_CPROP_COUNTS[$FILENAME]=$COUNT
-    
-    # No DCE
-    $OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
-        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME}_no_dce.bc" 2>&1 > /dev/null
-    $LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-slp -bpf-enable-count \
-        "${ABLATION_DIR}/${FILENAME}_no_dce.bc" -o "${ABLATION_DIR}/${FILENAME}_no_dce.o" 2>&1 | tee /tmp/no_dce_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/no_dce_${FILENAME}.txt | extract_count)
-    [ -z "$COUNT" ] && COUNT=0
-    NO_DCE_COUNTS[$FILENAME]=$COUNT
-    
-    # No SLP
-    $OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
-        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME}_no_slp.bc" 2>&1 > /dev/null
+        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME_BASE}_no_slp.bc" 2>&1 > /dev/null
     $LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-dce -bpf-enable-count \
-        "${ABLATION_DIR}/${FILENAME}_no_slp.bc" -o "${ABLATION_DIR}/${FILENAME}_no_slp.o" 2>&1 | tee /tmp/no_slp_${FILENAME}.txt > /dev/null
-    COUNT=$(cat /tmp/no_slp_${FILENAME}.txt | extract_count)
+        "${ABLATION_DIR}/${FILENAME_BASE}_no_slp.bc" -o "${ABLATION_DIR}/${FILENAME_BASE}_no_slp.o" 2>&1 | tee /tmp/no_slp_${FILENAME_BASE}.txt > /dev/null
+    COUNT=$(cat /tmp/no_slp_${FILENAME_BASE}.txt | extract_count)
     [ -z "$COUNT" ] && COUNT=0
-    NO_SLP_COUNTS[$FILENAME]=$COUNT
+    NO_SLP_COUNTS[$FILENAME_BASE]=$COUNT
+    
+    # Remove SLP + Fusion (keep Alignment, CP, DCE)
+    $OPT -load-pass-plugin="$ALIGN_PLUGIN" -passes="bpfalign" \
+        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME_BASE}_no_slp_fusion.bc" 2>&1 > /dev/null
+    $LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-dce -bpf-enable-count \
+        "${ABLATION_DIR}/${FILENAME_BASE}_no_slp_fusion.bc" -o "${ABLATION_DIR}/${FILENAME_BASE}_no_slp_fusion.o" 2>&1 | tee /tmp/no_slp_fusion_${FILENAME_BASE}.txt > /dev/null
+    COUNT=$(cat /tmp/no_slp_fusion_${FILENAME_BASE}.txt | extract_count)
+    [ -z "$COUNT" ] && COUNT=0
+    NO_SLP_FUSION_COUNTS[$FILENAME_BASE]=$COUNT
+    
+    # Remove SLP + Fusion + Alignment (keep CP, DCE)
+    $LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-dce -bpf-enable-count \
+        "$LL_FILE" -o "${ABLATION_DIR}/${FILENAME_BASE}_no_slp_fusion_align.o" 2>&1 | tee /tmp/no_slp_fusion_align_${FILENAME_BASE}.txt > /dev/null
+    COUNT=$(cat /tmp/no_slp_fusion_align_${FILENAME_BASE}.txt | extract_count)
+    [ -z "$COUNT" ] && COUNT=0
+    NO_SLP_FUSION_ALIGN_COUNTS[$FILENAME_BASE]=$COUNT
+    
+    # Remove all optimizations (same as baseline)
+    NO_ALL_COUNTS[$FILENAME_BASE]=${BASELINE_COUNTS[$FILENAME_BASE]}
     
     echo "  Done."
     echo
@@ -137,59 +133,76 @@ echo "========================================="
 echo "Results Summary"
 echo "========================================="
 echo
-printf "%-30s %10s %10s %10s %10s %10s %10s %10s %10s\n" \
-    "File" "Baseline" "Full" "NoIR" "NoAlign" "NoFusion" "NoCP" "NoDCE" "NoSLP"
+printf "%-30s %10s %10s %10s %10s %10s %10s\n" \
+    "File" "Baseline" "Full" "-SLP" "-SLP-Fus" "-SLP-F-A" "-All"
 echo "----------------------------------------------------------------------------------------------------------------------------"
 
 TOTAL_BASELINE=0
 TOTAL_FULL=0
-TOTAL_NO_IR=0
-TOTAL_NO_ALIGN=0
-TOTAL_NO_FUSION=0
-TOTAL_NO_CPROP=0
-TOTAL_NO_DCE=0
 TOTAL_NO_SLP=0
+TOTAL_NO_SLP_FUSION=0
+TOTAL_NO_SLP_FUSION_ALIGN=0
+TOTAL_NO_ALL=0
 
 for LL_FILE in $LL_FILES; do
-    FILENAME=$(basename "$LL_FILE" .ll)
+    FILENAME=$(basename "$LL_FILE")
+    FILENAME_BASE="${FILENAME%.*}"
     
-    B=${BASELINE_COUNTS[$FILENAME]}
-    F=${FULL_COUNTS[$FILENAME]}
-    NIR=${NO_IR_COUNTS[$FILENAME]}
-    NA=${NO_ALIGN_COUNTS[$FILENAME]}
-    NF=${NO_FUSION_COUNTS[$FILENAME]}
-    NCP=${NO_CPROP_COUNTS[$FILENAME]}
-    ND=${NO_DCE_COUNTS[$FILENAME]}
-    NS=${NO_SLP_COUNTS[$FILENAME]}
+    B=${BASELINE_COUNTS[$FILENAME_BASE]}
+    F=${FULL_COUNTS[$FILENAME_BASE]}
+    NS=${NO_SLP_COUNTS[$FILENAME_BASE]}
+    NSF=${NO_SLP_FUSION_COUNTS[$FILENAME_BASE]}
+    NSFA=${NO_SLP_FUSION_ALIGN_COUNTS[$FILENAME_BASE]}
+    NA=${NO_ALL_COUNTS[$FILENAME_BASE]}
     
-    printf "%-30s %10s %10s %10s %10s %10s %10s %10s %10s\n" \
-        "$FILENAME" "$B" "$F" "$NIR" "$NA" "$NF" "$NCP" "$ND" "$NS"
+    printf "%-30s %10s %10s %10s %10s %10s %10s\n" \
+        "$FILENAME_BASE" "$B" "$F" "$NS" "$NSF" "$NSFA" "$NA"
     
     TOTAL_BASELINE=$((TOTAL_BASELINE + B))
     TOTAL_FULL=$((TOTAL_FULL + F))
-    TOTAL_NO_IR=$((TOTAL_NO_IR + NIR))
-    TOTAL_NO_ALIGN=$((TOTAL_NO_ALIGN + NA))
-    TOTAL_NO_FUSION=$((TOTAL_NO_FUSION + NF))
-    TOTAL_NO_CPROP=$((TOTAL_NO_CPROP + NCP))
-    TOTAL_NO_DCE=$((TOTAL_NO_DCE + ND))
     TOTAL_NO_SLP=$((TOTAL_NO_SLP + NS))
+    TOTAL_NO_SLP_FUSION=$((TOTAL_NO_SLP_FUSION + NSF))
+    TOTAL_NO_SLP_FUSION_ALIGN=$((TOTAL_NO_SLP_FUSION_ALIGN + NSFA))
+    TOTAL_NO_ALL=$((TOTAL_NO_ALL + NA))
 done
 
 echo "----------------------------------------------------------------------------------------------------------------------------"
-printf "%-30s %10s %10s %10s %10s %10s %10s %10s %10s\n" \
-    "TOTAL" "$TOTAL_BASELINE" "$TOTAL_FULL" "$TOTAL_NO_IR" "$TOTAL_NO_ALIGN" "$TOTAL_NO_FUSION" "$TOTAL_NO_CPROP" "$TOTAL_NO_DCE" "$TOTAL_NO_SLP"
+printf "%-30s %10s %10s %10s %10s %10s %10s\n" \
+    "TOTAL" "$TOTAL_BASELINE" "$TOTAL_FULL" "$TOTAL_NO_SLP" "$TOTAL_NO_SLP_FUSION" "$TOTAL_NO_SLP_FUSION_ALIGN" "$TOTAL_NO_ALL"
 
 echo
 echo "========================================="
-echo "Optimization Impact (vs Full)"
+echo "Optimization Impact (Cumulative Removal)"
 echo "========================================="
-echo "Total reduction: $((TOTAL_BASELINE - TOTAL_FULL)) instructions ($(echo "scale=2; 100 * ($TOTAL_BASELINE - $TOTAL_FULL) / $TOTAL_BASELINE" | bc)%)"
+REDUCTION=$((TOTAL_BASELINE - TOTAL_FULL))
+REDUCTION_PCT=$(echo "scale=2; 100 * $REDUCTION / $TOTAL_BASELINE" | bc)
+echo "Total reduction: $REDUCTION instructions ($REDUCTION_PCT%)"
 echo
-echo "Impact of removing each optimization:"
-echo "  No IR passes:     +$((TOTAL_NO_IR - TOTAL_FULL)) instructions"
-echo "  No alignment:     +$((TOTAL_NO_ALIGN - TOTAL_FULL)) instructions"
-echo "  No fusion:        +$((TOTAL_NO_FUSION - TOTAL_FULL)) instructions"
-echo "  No const-prop:    +$((TOTAL_NO_CPROP - TOTAL_FULL)) instructions"
-echo "  No DCE:           +$((TOTAL_NO_DCE - TOTAL_FULL)) instructions"
-echo "  No SLP:           +$((TOTAL_NO_SLP - TOTAL_FULL)) instructions"
+echo "Impact of removing optimizations one by one:"
+echo "  All opts:                     $TOTAL_FULL instructions"
+echo "  - SLP:                        $TOTAL_NO_SLP instructions (+$((TOTAL_NO_SLP - TOTAL_FULL)))"
+echo "  - SLP - Fusion:               $TOTAL_NO_SLP_FUSION instructions (+$((TOTAL_NO_SLP_FUSION - TOTAL_NO_SLP)))"
+echo "  - SLP - Fusion - Alignment:   $TOTAL_NO_SLP_FUSION_ALIGN instructions (+$((TOTAL_NO_SLP_FUSION_ALIGN - TOTAL_NO_SLP_FUSION)))"
+echo "  - SLP - Fusion - Align - CP/DCE: $TOTAL_NO_ALL instructions (+$((TOTAL_NO_ALL - TOTAL_NO_SLP_FUSION_ALIGN)))"
 echo "========================================="
+
+# Output CSV file
+CSV_FILE="results.csv"
+echo "File,Baseline,Full,-SLP,-SLP-Fusion,-SLP-Fusion-Align,-All" > "$CSV_FILE"
+for LL_FILE in $LL_FILES; do
+    FILENAME=$(basename "$LL_FILE")
+    FILENAME_BASE="${FILENAME%.*}"
+    
+    B=${BASELINE_COUNTS[$FILENAME_BASE]}
+    F=${FULL_COUNTS[$FILENAME_BASE]}
+    NS=${NO_SLP_COUNTS[$FILENAME_BASE]}
+    NSF=${NO_SLP_FUSION_COUNTS[$FILENAME_BASE]}
+    NSFA=${NO_SLP_FUSION_ALIGN_COUNTS[$FILENAME_BASE]}
+    NA=${NO_ALL_COUNTS[$FILENAME_BASE]}
+    
+    echo "$FILENAME_BASE,$B,$F,$NS,$NSF,$NSFA,$NA" >> "$CSV_FILE"
+done
+echo "TOTAL,$TOTAL_BASELINE,$TOTAL_FULL,$TOTAL_NO_SLP,$TOTAL_NO_SLP_FUSION,$TOTAL_NO_SLP_FUSION_ALIGN,$TOTAL_NO_ALL" >> "$CSV_FILE"
+
+echo
+echo "Results saved to $CSV_FILE"

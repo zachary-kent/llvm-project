@@ -1,0 +1,51 @@
+=========================================
+Suricata Static Instruction Count Analysis
+=========================================
+
+Processing filter.ll...
+  Done.
+
+Processing xdp_filter.ll...
+  Done.
+
+Processing vlan_filter.ll...
+  Done.
+
+Processing xdp_lb.ll...
+  Done.
+
+Processing prog.c...
+  Done.
+
+Processing tunnel.ll...
+  Done.
+
+=========================================
+Results Summary
+=========================================
+
+File                             Baseline       Full       -SLP   -SLP-DCE -SLP-DCE-CP       -All
+----------------------------------------------------------------------------------------------------------------------------
+filter                                 37         34         34         36         36         37
+xdp_filter                            297        277        277        288        288        294
+vlan_filter                             8          8          8          8          8          8
+xdp_lb                                345        335        335        339        339        339
+prog                                   86          0         74         86         86         86
+tunnel                                258        237        240        251        251        252
+----------------------------------------------------------------------------------------------------------------------------
+TOTAL                                1031        891        968       1008       1008       1016
+
+=========================================
+Optimization Impact (Cumulative Removal)
+=========================================
+Total reduction: 140 instructions (%)
+
+Impact of removing optimizations one by one:
+  All opts:                   891 instructions
+  - SLP:                      968 instructions (+77)
+  - SLP - DCE:                1008 instructions (+40)
+  - SLP - DCE - CP:           1008 instructions (+0)
+  - SLP - DCE - CP - Fusion:  1016 instructions (+8)
+=========================================
+
+Results saved to results.csv

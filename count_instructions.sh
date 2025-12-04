@@ -61,62 +61,18 @@ echo "All optimizations: $FULL_COUNT instructions"
 echo
 
 echo "========================================="
-echo "Ablation Study (removing one at a time)"
+echo "Ablation Study (removing one by one)"
 echo "========================================="
 echo
 
-# Ablation: No IR passes (only LLC passes)
-echo "Testing: No IR passes (alignment + fusion)..."
-$LLC -march=bpf -filetype=obj $LLC_PASSES "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_ir.o" 2>&1 | tee /tmp/no_ir_output.txt > /dev/null
-NO_IR_COUNT=$(cat /tmp/no_ir_output.txt | extract_count)
-[ -z "$NO_IR_COUNT" ] && NO_IR_COUNT=0
-echo "No IR passes: $NO_IR_COUNT instructions"
+# Ablation: Remove optimizations one by one, starting from full
+echo "Testing: All optimizations (baseline for ablation)..."
+# Already computed as FULL_COUNT
+echo "All opts: $FULL_COUNT instructions"
 echo
 
-# Ablation: No alignment
-echo "Testing: No alignment (fusion + LLC passes)..."
-$OPT -load-pass-plugin="$FUSION_PLUGIN" -passes="bpffusion" \
-    "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_align.bc" 2>&1 > /dev/null
-$LLC -march=bpf -filetype=obj $LLC_PASSES "bench/ablation/${SOURCE_NAME}_no_align.bc" -o "bench/ablation/${SOURCE_NAME}_no_align.o" 2>&1 | tee /tmp/no_align_output.txt > /dev/null
-NO_ALIGN_COUNT=$(cat /tmp/no_align_output.txt | extract_count)
-[ -z "$NO_ALIGN_COUNT" ] && NO_ALIGN_COUNT=0
-echo "No alignment: $NO_ALIGN_COUNT instructions"
-echo
-
-# Ablation: No fusion
-echo "Testing: No fusion (alignment + LLC passes)..."
-$OPT -load-pass-plugin="$ALIGN_PLUGIN" -passes="bpfalign" \
-    "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_fusion.bc" 2>&1 > /dev/null
-$LLC -march=bpf -filetype=obj $LLC_PASSES "bench/ablation/${SOURCE_NAME}_no_fusion.bc" -o "bench/ablation/${SOURCE_NAME}_no_fusion.o" 2>&1 | tee /tmp/no_fusion_output.txt > /dev/null
-NO_FUSION_COUNT=$(cat /tmp/no_fusion_output.txt | extract_count)
-[ -z "$NO_FUSION_COUNT" ] && NO_FUSION_COUNT=0
-echo "No fusion: $NO_FUSION_COUNT instructions"
-echo
-
-# Ablation: No const-prop
-echo "Testing: No const-prop (IR passes + other LLC passes)..."
-$OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
-    "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_cprop.bc" 2>&1 > /dev/null
-$LLC -march=bpf -filetype=obj -bpf-enable-dce -bpf-enable-slp -bpf-enable-count \
-    "bench/ablation/${SOURCE_NAME}_no_cprop.bc" -o "bench/ablation/${SOURCE_NAME}_no_cprop.o" 2>&1 | tee /tmp/no_cprop_output.txt > /dev/null
-NO_CPROP_COUNT=$(cat /tmp/no_cprop_output.txt | extract_count)
-[ -z "$NO_CPROP_COUNT" ] && NO_CPROP_COUNT=0
-echo "No const-prop: $NO_CPROP_COUNT instructions"
-echo
-
-# Ablation: No DCE
-echo "Testing: No DCE (IR passes + other LLC passes)..."
-$OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
-    "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_dce.bc" 2>&1 > /dev/null
-$LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-slp -bpf-enable-count \
-    "bench/ablation/${SOURCE_NAME}_no_dce.bc" -o "bench/ablation/${SOURCE_NAME}_no_dce.o" 2>&1 | tee /tmp/no_dce_output.txt > /dev/null
-NO_DCE_COUNT=$(cat /tmp/no_dce_output.txt | extract_count)
-[ -z "$NO_DCE_COUNT" ] && NO_DCE_COUNT=0
-echo "No DCE: $NO_DCE_COUNT instructions"
-echo
-
-# Ablation: No SLP
-echo "Testing: No SLP (IR passes + other LLC passes)..."
+# Ablation: Remove SLP first
+echo "Testing: Remove SLP..."
 $OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
     "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_slp.bc" 2>&1 > /dev/null
 $LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-dce -bpf-enable-count \
@@ -124,6 +80,47 @@ $LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-dce -bpf-enable
 NO_SLP_COUNT=$(cat /tmp/no_slp_output.txt | extract_count)
 [ -z "$NO_SLP_COUNT" ] && NO_SLP_COUNT=0
 echo "No SLP: $NO_SLP_COUNT instructions"
+echo
+
+# Ablation: Remove SLP + DCE
+echo "Testing: Remove SLP + DCE..."
+$OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
+    "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_slp_dce.bc" 2>&1 > /dev/null
+$LLC -march=bpf -filetype=obj -bpf-enable-const-prop -bpf-enable-count \
+    "bench/ablation/${SOURCE_NAME}_no_slp_dce.bc" -o "bench/ablation/${SOURCE_NAME}_no_slp_dce.o" 2>&1 | tee /tmp/no_slp_dce_output.txt > /dev/null
+NO_SLP_DCE_COUNT=$(cat /tmp/no_slp_dce_output.txt | extract_count)
+[ -z "$NO_SLP_DCE_COUNT" ] && NO_SLP_DCE_COUNT=0
+echo "No SLP + DCE: $NO_SLP_DCE_COUNT instructions"
+echo
+
+# Ablation: Remove SLP + DCE + const-prop
+echo "Testing: Remove SLP + DCE + const-prop..."
+$OPT -load-pass-plugin="$ALIGN_PLUGIN" -load-pass-plugin="$FUSION_PLUGIN" -passes="$IR_PASSES" \
+    "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_slp_dce_cp.bc" 2>&1 > /dev/null
+$LLC -march=bpf -filetype=obj -bpf-enable-count \
+    "bench/ablation/${SOURCE_NAME}_no_slp_dce_cp.bc" -o "bench/ablation/${SOURCE_NAME}_no_slp_dce_cp.o" 2>&1 | tee /tmp/no_slp_dce_cp_output.txt > /dev/null
+NO_SLP_DCE_CP_COUNT=$(cat /tmp/no_slp_dce_cp_output.txt | extract_count)
+[ -z "$NO_SLP_DCE_CP_COUNT" ] && NO_SLP_DCE_CP_COUNT=0
+echo "No SLP + DCE + CP: $NO_SLP_DCE_CP_COUNT instructions"
+echo
+
+# Ablation: Remove SLP + DCE + const-prop + fusion
+echo "Testing: Remove SLP + DCE + const-prop + fusion..."
+$OPT -load-pass-plugin="$ALIGN_PLUGIN" -passes="bpfalign" \
+    "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_slp_dce_cp_fusion.bc" 2>&1 > /dev/null
+$LLC -march=bpf -filetype=obj -bpf-enable-count \
+    "bench/ablation/${SOURCE_NAME}_no_slp_dce_cp_fusion.bc" -o "bench/ablation/${SOURCE_NAME}_no_slp_dce_cp_fusion.o" 2>&1 | tee /tmp/no_slp_dce_cp_fusion_output.txt > /dev/null
+NO_SLPDCECPFUSION_COUNT=$(cat /tmp/no_slp_dce_cp_fusion_output.txt | extract_count)
+[ -z "$NO_SLPDCECPFUSION_COUNT" ] && NO_SLPDCECPFUSION_COUNT=0
+echo "No SLP + DCE + CP + Fusion: $NO_SLPDCECPFUSION_COUNT instructions"
+echo
+
+# Ablation: Remove all LLC passes + fusion (only alignment left)
+echo "Testing: Remove SLP + DCE + const-prop + fusion + alignment..."
+$LLC -march=bpf -filetype=obj -bpf-enable-count "bench/baseline/${SOURCE_NAME}.ll" -o "bench/ablation/${SOURCE_NAME}_no_opts.o" 2>&1 | tee /tmp/no_opts_output.txt > /dev/null
+NO_OPTS_COUNT=$(cat /tmp/no_opts_output.txt | extract_count)
+[ -z "$NO_OPTS_COUNT" ] && NO_OPTS_COUNT=0
+echo "No optimizations (baseline): $NO_OPTS_COUNT instructions"
 echo
 
 # Summary
@@ -134,11 +131,11 @@ echo "Baseline (no opts):           $BASELINE_COUNT instructions"
 echo "All optimizations:            $FULL_COUNT instructions"
 echo "  Reduction: $(($BASELINE_COUNT - $FULL_COUNT)) instructions ($(echo "scale=2; 100 * ($BASELINE_COUNT - $FULL_COUNT) / $BASELINE_COUNT" | bc)%)"
 echo
-echo "Ablation Study Results:"
-echo "  No IR passes:               $NO_IR_COUNT instructions (impact: $(($NO_IR_COUNT - $FULL_COUNT)))"
-echo "  No alignment:               $NO_ALIGN_COUNT instructions (impact: $(($NO_ALIGN_COUNT - $FULL_COUNT)))"
-echo "  No fusion:                  $NO_FUSION_COUNT instructions (impact: $(($NO_FUSION_COUNT - $FULL_COUNT)))"
-echo "  No const-prop:              $NO_CPROP_COUNT instructions (impact: $(($NO_CPROP_COUNT - $FULL_COUNT)))"
-echo "  No DCE:                     $NO_DCE_COUNT instructions (impact: $(($NO_DCE_COUNT - $FULL_COUNT)))"
-echo "  No SLP:                     $NO_SLP_COUNT instructions (impact: $(($NO_SLP_COUNT - $FULL_COUNT)))"
+echo "Ablation Study Results (removing one by one):"
+echo "  All opts:                   $FULL_COUNT instructions"
+echo "  - SLP:                      $NO_SLP_COUNT instructions (+$(($NO_SLP_COUNT - $FULL_COUNT)))"
+echo "  - SLP - DCE:                $NO_SLP_DCE_COUNT instructions (+$(($NO_SLP_DCE_COUNT - $NO_SLP_COUNT)))"
+echo "  - SLP - DCE - CP:           $NO_SLP_DCE_CP_COUNT instructions (+$(($NO_SLP_DCE_CP_COUNT - $NO_SLP_DCE_COUNT)))"
+echo "  - SLP - DCE - CP - Fusion:  $NO_SLPDCECPFUSION_COUNT instructions (+$(($NO_SLPDCECPFUSION_COUNT - $NO_SLP_DCE_CP_COUNT)))"
+echo "  All removed (baseline):     $NO_OPTS_COUNT instructions (+$(($NO_OPTS_COUNT - $NO_SLPDCECPFUSION_COUNT)))"
 echo "========================================="
