@@ -10,6 +10,21 @@ import argparse
 import json
 from scapy.all import Ether, IP, UDP, Raw, rdpcap
 
+parser = argparse.ArgumentParser(
+    description="CLI"
+)
+
+parser.add_argument("-i", dest="input",required=True)
+parser.add_argument("-p", dest="pcap",required=True)
+parser.add_argument("-r", dest="repeat",required=True)
+
+args = parser.parse_args()
+
+PROG_PATH = args.input
+PCAP_PATH = args.pcap
+REPEAT = args.pcap
+
+
 src_mac = "00:11:22:33:44:55"
 dst_mac = "aa:bb:cc:dd:ee:ff"
 
@@ -145,19 +160,6 @@ PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 # PIN_PATH = "/home/otso/llvm-project/xdp_bench_prog"
 # PROG_PATH = "build/bin/prog.o"
 
-parser = argparse.ArgumentParser(
-    description="CLI"
-)
-
-parser.add_argument("-i", dest="input",required=True)
-parser.add_argument("-p", dest="pcap",required=True)
-parser.add_argument("-r", dest="repeat",required=True)
-
-args = parser.parse_args()
-
-PROG_PATH = args.input
-PCAP_PATH = args.pcap
-REPEAT = args.pcap
 
 # PROG_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.o"
 # PCAP_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.pcap"
