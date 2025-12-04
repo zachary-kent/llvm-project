@@ -164,8 +164,8 @@ void BPFTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
         FPM.addPass(BPFPreserveDITypePass());
         FPM.addPass(BPFIRPeepholePass());
         MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
-        // if (EnableInstrumentation)
-        //   MPM.addPass(AddVolatileGlobal());
+        if (EnableInstrumentation)
+          MPM.addPass(AddVolatileGlobal());
       });
   PB.registerPeepholeEPCallback([=](FunctionPassManager &FPM,
                                     OptimizationLevel Level) {

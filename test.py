@@ -68,8 +68,8 @@ def run_prog(pin_path, pkt, repeat=REPEAT):
     str(repeat)
   ]
 
-  # perf_cmd = ["perf", "stat", "-e", "instructions,cycles", "--"] + run_cmd
-  subprocess.run(run_cmd)
+  perf_cmd = ["perf", "stat", "-e", "instructions,cycles", "--"] + run_cmd
+  subprocess.run(perf_cmd)
 
 def load_prog(prog_path, pin_path):
   print("LOADING PROGRAM")
@@ -105,6 +105,7 @@ def initialize_maps(pin_path, initial_entries):
     "--json",
     "--pretty"
   ], capture_output=True, text=True, check=True)
+  print(result)
   ids = dict()
   for id in json.loads(result.stdout)["map_ids"]:
     result = subprocess.run([
@@ -156,6 +157,7 @@ PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 # args = parser.parse_args()
 
 PROG_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.o"
+PROG_PATH = "compiled_benchmarks/new/xdp_filter.bpf"
 
 PCAP_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.pcap"
 ENTRIES_PATH = "entries.json"
@@ -164,7 +166,7 @@ os.makedirs(os.path.dirname(PIN_PATH), exist_ok=True)
 load_prog(PROG_PATH, PIN_PATH)
 initialize_maps(PIN_PATH, ENTRIES_PATH)
 
-profiling = run_profiling(PIN_PATH)
+# profiling = run_profiling(PIN_PATH)
 
 for i, pkt in enumerate(rdpcap(PCAP_PATH)):
   os.makedirs(os.path.dirname("./packets"), exist_ok=True)
@@ -174,5 +176,5 @@ for i, pkt in enumerate(rdpcap(PCAP_PATH)):
     f.write(data)
   run_prog(PIN_PATH, PACKET_FILE_NAME)
 
-profiling.send_signal(sig=2)
+# profiling.send_signal(sig=2)
 # os.remove(PIN_PATH)
