@@ -158,11 +158,11 @@ parser.add_argument("-p", dest="pcap",required=True)
 args = parser.parse_args()
 
 PROG_PATH = args.input
-# PROG_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.o"
-PROG_PATH = "compiled_benchmarks/new/xdp_filter.bpf"
-
-# PCAP_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.pcap"
 PCAP_PATH = args.pcap
+
+# PROG_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.o"
+# PCAP_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.pcap"
+
 ENTRIES_PATH = "entries.json"
 
 os.makedirs(os.path.dirname(PIN_PATH), exist_ok=True)
