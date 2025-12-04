@@ -33,6 +33,26 @@ SEC = "xdp"
 
 REPEAT=1
 
+
+def run_profiling(pin_path) -> subprocess.Popen:
+  cmd = [
+      "bpftool",
+      "prog",
+      "profile",
+      "pinned",
+      pin_path,
+      "cycles",
+      "instructions",
+      "llc_misses",
+  ]
+
+  print("RUNNING PROFILING")
+  print(" ".join(cmd))
+
+  return subprocess.Popen(
+      cmd,
+  )
+
 def run_prog(pin_path, pkt, repeat=REPEAT):
   print("RUNNING PROGRAM")
   # Run the already pinned program
@@ -144,6 +164,8 @@ os.makedirs(os.path.dirname(PIN_PATH), exist_ok=True)
 load_prog(PROG_PATH, PIN_PATH)
 initialize_maps(PIN_PATH, ENTRIES_PATH)
 
+profiling = run_profiling(PIN_PATH)
+
 for i, pkt in enumerate(rdpcap(PCAP_PATH)):
   os.makedirs(os.path.dirname("./packets"), exist_ok=True)
   PACKET_FILE_NAME = f"./packets/packet{i}"
@@ -151,4 +173,6 @@ for i, pkt in enumerate(rdpcap(PCAP_PATH)):
   with open(PACKET_FILE_NAME, "w") as f:
     f.write(data)
   run_prog(PIN_PATH, PACKET_FILE_NAME)
+
+profiling.send_signal(sig=2)
 # os.remove(PIN_PATH)
