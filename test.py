@@ -127,15 +127,15 @@ PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 # PIN_PATH = "/home/otso/llvm-project/xdp_bench_prog"
 # PROG_PATH = "build/bin/prog.o"
 
-parser = argparse.ArgumentParser(
-    description="CLI"
-)
+# parser = argparse.ArgumentParser(
+#     description="CLI"
+# )
 
-parser.add_argument("-i", dest="input",required=True)
+# parser.add_argument("-i", dest="input",required=True)
 
-args = parser.parse_args()
+# args = parser.parse_args()
 
-PROG_PATH = args.input
+PROG_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.o"
 
 PCAP_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.pcap"
 ENTRIES_PATH = "entries.json"
