@@ -1,0 +1,1 @@
+%4 = load i16, ptr %h_proto5, align 4
