@@ -91,26 +91,22 @@ def load_prog(prog_path, pin_path):
     os.remove(pin_path)
   except OSError:
     pass
-  subprocess.run([
+  cmd = [
     "bpftool", 
     "prog",
     "load",
     prog_path,
     pin_path,
-    # "type",
-    # "xdp",
-    # "name",
-    # "xdp_bench",
-    # "sec",
-    # SEC,
-  ])
+  ]
+  print(" ".join(cmd))
+  subprocess.run(cmd)
   print("DONE LOADING PROGRAM")
 
 PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 
 def initialize_maps(pin_path, initial_entries):
   # sudo bpftool prog show pinned /sys/fs/bpf/xdp_bench_prog --json --pretty
-  result = subprocess.run([
+  cmd = [
     "bpftool",
     "prog",
     "show",
@@ -118,18 +114,22 @@ def initialize_maps(pin_path, initial_entries):
     pin_path,
     "--json",
     "--pretty"
-  ], capture_output=True, text=True, check=True)
+  ]
+  print(" ".join(cmd))
+  result = subprocess.run(cmd, capture_output=True, text=True, check=True)
   print(result)
   ids = dict()
   for id in json.loads(result.stdout)["map_ids"]:
-    result = subprocess.run([
+    cmd = [
       "bpftool",
       "map",
       "show",
       "id",
       str(id),
       "--json"
-    ], capture_output=True, text=True, check=True)
+    ]
+    print(" ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     map_info = json.loads(result.stdout)
     name = map_info["name"]
     ids[name] = id
@@ -144,7 +144,7 @@ def initialize_maps(pin_path, initial_entries):
   with open(initial_entries, 'r') as f:
     for name, entries in json.load(f).items():
         for entry in entries:
-          result = subprocess.run([
+          cmd = [
             "bpftool",
             "map",
             "update",
@@ -156,7 +156,12 @@ def initialize_maps(pin_path, initial_entries):
             "value",
             "hex",
             *entry["value"].split()
-          ])
+          ]
+      
+          print(" ".join(cmd))
+
+          result = subprocess.run(cmd)
+        
 
 PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 # PIN_PATH = "/home/otso/llvm-project/xdp_bench_prog"
