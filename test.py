@@ -17,12 +17,14 @@ parser = argparse.ArgumentParser(
 parser.add_argument("-i", dest="input",required=True)
 parser.add_argument("-p", dest="pcap",required=True)
 parser.add_argument("-r", dest="repeat",required=True)
+parser.add_argument("-e", dest="entries",required=True)
 
 args = parser.parse_args()
 
 PROG_PATH = args.input
 PCAP_PATH = args.pcap
 REPEAT = int(args.repeat)
+ENTRIES_PATH = args.entries
 
 
 src_mac = "00:11:22:33:44:55"
@@ -164,7 +166,6 @@ PIN_PATH = "/sys/fs/bpf/xdp_bench_prog"
 # PROG_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.o"
 # PCAP_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.pcap"
 
-ENTRIES_PATH = "entries.json"
 
 os.makedirs(os.path.dirname(PIN_PATH), exist_ok=True)
 load_prog(PROG_PATH, PIN_PATH)
