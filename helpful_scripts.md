@@ -15,6 +15,8 @@ This creates a fusion.so and and align.so
 
 Both:
 
+./build/llvm/bin/opt -load-pass-plugin=./align.so -load-pass-plugin=./fusion.so -passes="bpfalign,bpffusion" tunnel.ll -o tunnel.bc
+
 ./build/bin/opt -load-pass-plugin=./align.so -load-pass-plugin=./fusion.so -passes="bpfalign,bpffusion" tunnel.ll -o tunnel.bc
 
 

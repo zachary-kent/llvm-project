@@ -112,7 +112,7 @@ attributes #3 = { nounwind }
 
 !0 = !DIGlobalVariableExpression(var: !1, expr: !DIExpression())
 !1 = distinct !DIGlobalVariable(name: "map", scope: !2, file: !3, line: 8, type: !35, isLocal: false, isDefinition: true)
-!2 = distinct !DICompileUnit(language: DW_LANG_C11, file: !3, producer: "clang version 22.0.0git (git@github.com:zachary-kent/llvm-project.git a0052d6adac997db0c879cbb11e4784aa46c6469)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, enums: !4, retainedTypes: !14, globals: !17, splitDebugInlining: false, nameTableKind: None)
+!2 = distinct !DICompileUnit(language: DW_LANG_C11, file: !3, producer: "clang version 22.0.0git (git@github.com:zachary-kent/llvm-project.git 88394c9d39534490652315811b7c149aa18c2903)", isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug, enums: !4, retainedTypes: !14, globals: !17, splitDebugInlining: false, nameTableKind: None)
 !3 = !DIFile(filename: "prog.c", directory: "/home/zkent/llvm-project", checksumkind: CSK_MD5, checksum: "8629087a4da3d465c645de47d77715d1")
 !4 = !{!5}
 !5 = !DICompositeType(tag: DW_TAG_enumeration_type, name: "xdp_action", file: !6, line: 3153, baseType: !7, size: 32, elements: !8)
@@ -158,7 +158,7 @@ attributes #3 = { nounwind }
 !45 = !{i32 1, !"wchar_size", i32 4}
 !46 = !{i32 7, !"frame-pointer", i32 2}
 !47 = !{i32 7, !"debug-info-assignment-tracking", i1 true}
-!48 = !{!"clang version 22.0.0git (git@github.com:zachary-kent/llvm-project.git a0052d6adac997db0c879cbb11e4784aa46c6469)"}
+!48 = !{!"clang version 22.0.0git (git@github.com:zachary-kent/llvm-project.git 88394c9d39534490652315811b7c149aa18c2903)"}
 !49 = !{!50, !50, i64 0}
 !50 = !{!"int", !51, i64 0}
 !51 = !{!"omnipotent char", !52, i64 0}
