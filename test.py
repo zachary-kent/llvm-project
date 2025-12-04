@@ -31,9 +31,6 @@ def mk_packet(len):
 data = mk_packet(100)
 SEC = "xdp"
 
-REPEAT=1
-
-
 def run_profiling(pin_path) -> subprocess.Popen:
   cmd = [
       "bpftool",
@@ -154,11 +151,13 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument("-i", dest="input",required=True)
 parser.add_argument("-p", dest="pcap",required=True)
+parser.add_argument("-r", dest="repeat",required=True)
 
 args = parser.parse_args()
 
 PROG_PATH = args.input
 PCAP_PATH = args.pcap
+REPEAT = args.pcap
 
 # PROG_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.o"
 # PCAP_PATH = "../warp-artifacts/use_cases/l2_acl/l2acl.pcap"
