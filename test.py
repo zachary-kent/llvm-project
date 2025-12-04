@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 PROG_PATH = args.input
 PCAP_PATH = args.pcap
-REPEAT = args.pcap
+REPEAT = int(args.pcap)
 
 
 src_mac = "00:11:22:33:44:55"
